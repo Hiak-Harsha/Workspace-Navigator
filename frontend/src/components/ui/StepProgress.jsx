@@ -4,16 +4,16 @@ import { cn } from '../../lib/utils';
 
 export function StepProgress({ steps, currentStep }) {
   return (
-    <div className="mb-5 flex items-center gap-2">
+    <div className="mb-5 flex flex-wrap items-center gap-2 sm:flex-nowrap">
       {steps.map((label, idx) => {
         const done = idx < currentStep;
         const active = idx === currentStep;
         return (
           <React.Fragment key={label}>
-            <div className="flex items-center gap-2">
+            <div className="flex min-w-0 items-center gap-2">
               <div
                 className={cn(
-                  'flex h-6 w-6 items-center justify-center rounded-full border text-[11px] font-semibold transition-colors',
+                  'flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold transition-colors',
                   done && 'border-[var(--emerald)] bg-[var(--emerald)] text-white',
                   active && 'border-[var(--accent-bright)] bg-[var(--accent-soft)] text-[var(--accent-bright)]',
                   !done && !active && 'border-[var(--border-strong)] text-[var(--ink-muted)]'
@@ -23,7 +23,7 @@ export function StepProgress({ steps, currentStep }) {
               </div>
               <span
                 className={cn(
-                  'text-[12px] font-medium whitespace-nowrap',
+                  'truncate text-[12px] font-medium',
                   active || done ? 'text-[var(--ink)]' : 'text-[var(--ink-muted)]'
                 )}
               >
@@ -33,7 +33,7 @@ export function StepProgress({ steps, currentStep }) {
             {idx < steps.length - 1 && (
               <div
                 className={cn(
-                  'h-px flex-1 transition-colors',
+                  'hidden h-px flex-1 transition-colors sm:block',
                   done ? 'bg-[var(--emerald)]' : 'bg-[var(--border-hairline)]'
                 )}
               />

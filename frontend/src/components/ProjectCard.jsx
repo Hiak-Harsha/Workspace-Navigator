@@ -140,7 +140,7 @@ export function ProjectCard({
       </div>
 
       {/* Footer / Actions */}
-      <div className={cn('min-w-0', isList && 'flex items-center gap-2 shrink-0')}>
+      <div className={cn('min-w-0', isList && 'flex flex-wrap items-center gap-2 shrink-0')}>
         {!isList && (
           <div className="mb-2.5 flex items-center justify-between border-t pt-2.5 text-[11px] text-[var(--ink-muted)]">
             <span>{item.last_modified}</span>

@@ -117,7 +117,7 @@ export function SettingsSheet({ open, onClose, onSaved, showToast }) {
           </div>
         </div>
 
-        <div className="flex justify-end gap-2 pt-2">
+        <div className="flex flex-wrap justify-end gap-2.5 pt-2">
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>

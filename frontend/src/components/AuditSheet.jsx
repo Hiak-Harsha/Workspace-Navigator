@@ -197,11 +197,11 @@ export function AuditSheet({ open, initialTab = 'scan', onClose, onChanged, show
           </Button>
         </div>
       ) : (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-          <div className="truncate font-mono text-[11px] text-[var(--ink-muted)]">
+        <div className="mb-4 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0 flex-1 truncate font-mono text-[11px] text-[var(--ink-muted)]" title={quarantine?.quarantine_dir}>
             {quarantine?.quarantine_dir} ({formatBytes(quarantine?.total_bytes || 0)})
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex shrink-0 flex-wrap gap-2">
             <Button size="sm" variant="secondary" onClick={handleRestore} disabled={loading || selectedQ.size === 0}>
               <RotateCcw className="h-3.5 w-3.5" /> Restore ({selectedQ.size})
             </Button>

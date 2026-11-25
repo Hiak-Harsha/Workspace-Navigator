@@ -91,7 +91,7 @@ export function CleanDesktopSheet({ open, onClose, onCompleted, showToast }) {
             </div>
           )}
 
-          <div className="flex items-center justify-end gap-3 pt-2">
+          <div className="flex flex-wrap items-center justify-end gap-2.5 pt-2">
             <Button variant="secondary" onClick={onClose}>
               Cancel
             </Button>
