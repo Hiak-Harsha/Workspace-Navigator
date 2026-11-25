@@ -99,6 +99,30 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
+  getAiStatus: () =>
+    requestJson('/api/ai/status'),
+
+  aiSmartSort: (scope = 'workspace') =>
+    requestJson('/api/ai/smart-sort', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scope }),
+    }),
+
+  aiApplySort: (moves) =>
+    requestJson('/api/ai/apply-sort', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ moves }),
+    }),
+
+  aiSearch: (query) =>
+    requestJson('/api/ai/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query }),
+    }),
+
   shutdownServer: () =>
     requestJson('/api/shutdown', { method: 'POST' }),
 };

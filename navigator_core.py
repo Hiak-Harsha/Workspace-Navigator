@@ -20,6 +20,14 @@ from config_store import (
     save_config,
 )
 from git_inspector import find_git_repos, get_git_summaries_parallel, get_git_summary
+from ollama_ai import (
+    DEFAULT_OLLAMA_MODEL,
+    DEFAULT_OLLAMA_URL,
+    classify_with_ollama,
+    get_ollama_status,
+    semantic_search_with_ollama,
+    suggest_dynamic_sort,
+)
 from previewer import build_item_preview
 from redundancy import (
     IGNORED_DIR_NAMES,
@@ -36,6 +44,8 @@ from redundancy import (
 __all__ = [
     "CATEGORY_DISPLAY_ORDER",
     "DEFAULT_CATEGORIES",
+    "DEFAULT_OLLAMA_MODEL",
+    "DEFAULT_OLLAMA_URL",
     "IGNORED_DIR_NAMES",
     "IGNORED_FILE_NAMES",
     "NUMBERED_COPY_RE",
@@ -44,6 +54,7 @@ __all__ = [
     "analyze_workspace_redundancy",
     "build_item_preview",
     "classify_desktop_item",
+    "classify_with_ollama",
     "compare_folders",
     "compute_file_sha256",
     "compute_partial_signature",
@@ -52,6 +63,7 @@ __all__ = [
     "find_git_repos",
     "get_git_summaries_parallel",
     "get_git_summary",
+    "get_ollama_status",
     "get_quarantine_dir",
     "get_unique_destination",
     "list_quarantine",
@@ -62,4 +74,6 @@ __all__ = [
     "resolve_windows_desktop",
     "restore_quarantine_items",
     "save_config",
+    "semantic_search_with_ollama",
+    "suggest_dynamic_sort",
 ]

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { LayoutGrid, List, PanelLeftOpen, Power, RefreshCw, Search, ShieldCheck, Sparkles } from 'lucide-react';
+import { Bot, LayoutGrid, List, PanelLeftOpen, Power, RefreshCw, Search, ShieldCheck, Sparkles } from 'lucide-react';
 import { api } from './lib/api';
 import { cn, naturalCompare } from './lib/utils';
 import { Sidebar } from './components/Sidebar';
@@ -8,6 +8,7 @@ import { ProjectCard } from './components/ProjectCard';
 import { PreviewSheet } from './components/PreviewSheet';
 import { CleanDesktopSheet } from './components/CleanDesktopSheet';
 import { AuditSheet } from './components/AuditSheet';
+import { AiSortSheet } from './components/AiSortSheet';
 import { SettingsSheet } from './components/SettingsSheet';
 import { CommandPalette } from './components/CommandPalette';
 import { DeleteDialog } from './components/DeleteDialog';
@@ -46,6 +47,7 @@ export default function App() {
 
   const [previewPath, setPreviewPath] = useState(null);
   const [cleanOpen, setCleanOpen] = useState(false);
+  const [aiSortOpen, setAiSortOpen] = useState(false);
   const [auditState, setAuditState] = useState({ open: false, tab: 'scan' });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
@@ -326,6 +328,15 @@ export default function App() {
             </ShimmerButton>
 
             <Button
+              variant="secondary"
+              onClick={() => setAiSortOpen(true)}
+              title="Dynamic Folder Sorting via Local Ollama AI"
+            >
+              <Bot className="h-4 w-4 text-[var(--accent-bright)]" />
+              <span>AI Sort</span>
+            </Button>
+
+            <Button
               variant="emerald"
               onClick={() => setAuditState({ open: true, tab: 'scan' })}
             >
@@ -493,6 +504,13 @@ export default function App() {
       <CleanDesktopSheet
         open={cleanOpen}
         onClose={() => setCleanOpen(false)}
+        onCompleted={() => loadWorkspace(true)}
+        showToast={showToast}
+      />
+
+      <AiSortSheet
+        open={aiSortOpen}
+        onClose={() => setAiSortOpen(false)}
         onCompleted={() => loadWorkspace(true)}
         showToast={showToast}
       />

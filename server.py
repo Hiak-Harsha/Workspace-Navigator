@@ -44,6 +44,8 @@ from classifier import CODE_MARKERS, IGNORED_FILE_NAMES, TEMP_SUFFIXES
 from navigator_core import (
     CATEGORY_DISPLAY_ORDER,
     DEFAULT_CATEGORIES,
+    DEFAULT_OLLAMA_MODEL,
+    DEFAULT_OLLAMA_URL,
     QUARANTINE_SUBDIR,
     analyze_workspace_redundancy,
     build_item_preview,
@@ -53,6 +55,7 @@ from navigator_core import (
     ensure_workspace_structure,
     find_git_repos,
     get_git_summaries_parallel,
+    get_ollama_status,
     get_quarantine_dir,
     get_unique_destination,
     list_quarantine,
@@ -61,7 +64,10 @@ from navigator_core import (
     quarantine_items,
     restore_quarantine_items,
     save_config,
+    semantic_search_with_ollama,
+    suggest_dynamic_sort,
 )
+from ollama_ai import _describe_item_for_prompt
 
 STATE_LOCK = threading.RLock()
 RUNTIME_CFG: dict[str, Any] = load_config(ORGANIZER_CONFIG_FILE, NAVIGATOR_DIR)
@@ -823,9 +829,22 @@ class NavigatorHandler(SimpleHTTPRequestHandler):
                     "enabled": bool(RUNTIME_CFG.get("enabled", False)),
                     "duplicate_policy": RUNTIME_CFG.get("duplicate_policy", "recycle"),
                     "min_age_seconds": int(RUNTIME_CFG.get("min_age_seconds", 20)),
+                    "ollama_enabled": bool(RUNTIME_CFG.get("ollama_enabled", True)),
+                    "ollama_url": RUNTIME_CFG.get("ollama_url", DEFAULT_OLLAMA_URL),
+                    "ollama_model": RUNTIME_CFG.get("ollama_model", DEFAULT_OLLAMA_MODEL),
                     "extra_scan_roots": RUNTIME_CFG.get("extra_scan_roots", []),
                 }
             self._send_json(200, cfg_view)
+            return
+
+        if parsed.path == "/api/ai/status":
+            with STATE_LOCK:
+                o_url = RUNTIME_CFG.get("ollama_url", DEFAULT_OLLAMA_URL)
+                o_model = RUNTIME_CFG.get("ollama_model", DEFAULT_OLLAMA_MODEL)
+                o_enabled = bool(RUNTIME_CFG.get("ollama_enabled", True))
+            status = get_ollama_status(o_url, o_model)
+            status["enabled"] = o_enabled
+            self._send_json(200, status)
             return
 
         if parsed.path == "/api/preview":
@@ -1076,6 +1095,129 @@ class NavigatorHandler(SimpleHTTPRequestHandler):
             save_favorites(favs)
             invalidate_caches()
             self._send_json(200, {"success": True, "is_favorite": is_fav})
+            return
+
+        if parsed.path == "/api/ai/smart-sort":
+            scope = str(payload.get("scope", "workspace")).lower()
+            with STATE_LOCK:
+                ws_dir = Path(RUNTIME_CFG["workspace_dir"])
+                dt_dir = Path(RUNTIME_CFG["desktop_dir"])
+                cats = RUNTIME_CFG.get("categories") or DEFAULT_CATEGORIES
+                o_url = RUNTIME_CFG.get("ollama_url", DEFAULT_OLLAMA_URL)
+                o_model = RUNTIME_CFG.get("ollama_model", DEFAULT_OLLAMA_MODEL)
+
+            status = get_ollama_status(o_url, o_model)
+            if not status.get("available"):
+                self._send_json(503, {"success": False, "error": "Local Ollama server is not running on " + o_url})
+                return
+
+            candidates: list[dict[str, Any]] = []
+            if scope == "desktop":
+                if dt_dir.exists():
+                    for entry in sorted(dt_dir.iterdir(), key=lambda p: p.name.lower()):
+                        if entry.name.startswith(".") or entry.suffix.lower() in {".lnk", ".url", ".ini"}:
+                            continue
+                        candidates.append(
+                            {
+                                "name": entry.name,
+                                "path": str(entry.resolve()),
+                                "current_category": "Desktop",
+                                "description": _describe_item_for_prompt(entry),
+                            }
+                        )
+            else:
+                for cat_key in CATEGORY_DISPLAY_ORDER:
+                    if cat_key == "00_Archives_Storage":
+                        continue
+                    cat_dir = ws_dir / cat_key
+                    if not cat_dir.is_dir():
+                        continue
+                    for entry in sorted(cat_dir.iterdir(), key=lambda p: p.name.lower()):
+                        if entry.name.startswith(".") or entry.resolve() == NAVIGATOR_DIR.resolve():
+                            continue
+                        if entry.is_dir() and entry.name in set((cats.get(cat_key) or {}).get("sub_collections", [])):
+                            continue
+                        candidates.append(
+                            {
+                                "name": entry.name,
+                                "path": str(entry.resolve()),
+                                "current_category": cat_key,
+                                "description": _describe_item_for_prompt(entry),
+                            }
+                        )
+
+            try:
+                suggestions = suggest_dynamic_sort(
+                    candidates[:45],
+                    categories=cats,
+                    ollama_url=o_url,
+                    model=status.get("active_model") or o_model,
+                )
+                self._send_json(
+                    200,
+                    {
+                        "success": True,
+                        "model": status.get("active_model") or o_model,
+                        "scanned": len(candidates[:45]),
+                        "suggestions": suggestions,
+                    },
+                )
+            except Exception as e:
+                self._send_json(500, {"success": False, "error": f"Ollama sort failed: {e}"})
+            return
+
+        if parsed.path == "/api/ai/apply-sort":
+            moves = payload.get("moves", [])
+            with STATE_LOCK:
+                ws_dir = Path(RUNTIME_CFG["workspace_dir"])
+                cats = RUNTIME_CFG.get("categories") or DEFAULT_CATEGORIES
+            moved: list[dict[str, str]] = []
+            errors: list[dict[str, str]] = []
+            for m in moves:
+                src_raw = str(m.get("path", ""))
+                target_cat = str(m.get("target_category", ""))
+                src = Path(normalize_path(src_raw)) if src_raw else None
+                if not src or not src.exists() or target_cat not in cats:
+                    errors.append({"path": src_raw, "error": "Invalid source path or category"})
+                    continue
+                if not is_within_managed_roots(src):
+                    errors.append({"path": src_raw, "error": "Outside managed roots"})
+                    continue
+                dest_dir = ws_dir / target_cat
+                dest_dir.mkdir(parents=True, exist_ok=True)
+                dest = get_unique_destination(dest_dir / src.name)
+                if src.resolve() == dest.resolve() or src.parent.resolve() == dest_dir.resolve():
+                    continue
+                try:
+                    shutil.move(str(src), str(dest))
+                    moved.append({"from": str(src), "to": str(dest), "category": target_cat})
+                except Exception as e:
+                    errors.append({"path": str(src), "error": str(e)})
+            if moved:
+                invalidate_caches()
+            self._send_json(200, {"success": True, "moved": moved, "errors": errors})
+            return
+
+        if parsed.path == "/api/ai/search":
+            q = str(payload.get("query", "")).strip()
+            with STATE_LOCK:
+                o_url = RUNTIME_CFG.get("ollama_url", DEFAULT_OLLAMA_URL)
+                o_model = RUNTIME_CFG.get("ollama_model", DEFAULT_OLLAMA_MODEL)
+            status = get_ollama_status(o_url, o_model)
+            if not status.get("available"):
+                self._send_json(503, {"success": False, "error": "Local Ollama server is not running"})
+                return
+            try:
+                items = scan_items(force_refresh=False)
+                results = semantic_search_with_ollama(
+                    q, items, ollama_url=o_url, model=status.get("active_model") or o_model
+                )
+                self._send_json(
+                    200,
+                    {"success": True, "model": status.get("active_model") or o_model, "results": results},
+                )
+            except Exception as e:
+                self._send_json(500, {"success": False, "error": f"Ollama search failed: {e}"})
             return
 
         if parsed.path == "/api/shutdown":

@@ -222,6 +222,9 @@ def load_config(config_file: Path, navigator_dir: Path) -> dict[str, Any]:
         "duplicate_policy": raw.get("duplicate_policy", "recycle"),
         "min_age_seconds": int(raw.get("min_age_seconds", 20)),
         "scan_nested_git_depth": int(raw.get("scan_nested_git_depth", 2)),
+        "ollama_enabled": bool(raw.get("ollama_enabled", True)),
+        "ollama_url": str(raw.get("ollama_url", "http://127.0.0.1:11434")),
+        "ollama_model": str(raw.get("ollama_model", "llama3.2:latest")),
         "extra_scan_roots": extra_roots,
         "categories": raw.get("categories") or DEFAULT_CATEGORIES,
     }
@@ -237,6 +240,9 @@ def save_config(config_file: Path, cfg: dict[str, Any]) -> None:
         "duplicate_policy": cfg.get("duplicate_policy", "recycle"),
         "min_age_seconds": int(cfg.get("min_age_seconds", 20)),
         "scan_nested_git_depth": int(cfg.get("scan_nested_git_depth", 2)),
+        "ollama_enabled": bool(cfg.get("ollama_enabled", True)),
+        "ollama_url": str(cfg.get("ollama_url", "http://127.0.0.1:11434")),
+        "ollama_model": str(cfg.get("ollama_model", "llama3.2:latest")),
         "extra_scan_roots": cfg.get("extra_scan_roots", []),
     }
     if cfg.get("categories") and cfg["categories"] != DEFAULT_CATEGORIES:
