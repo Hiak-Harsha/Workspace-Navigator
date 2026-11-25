@@ -605,12 +605,13 @@ def find_vscode_exe() -> str | None:
 
 
 def _visible_startupinfo() -> Any:
-    """Ensure child GUI/console windows open visibly even when server.py was launched hidden."""
+    """Ensure child GUI/console windows open visibly on the interactive user desktop."""
     if os.name != "nt":
         return None
     si = subprocess.STARTUPINFO()
     si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
     si.wShowWindow = 1  # SW_SHOWNORMAL
+    si.lpDesktop = r"WinSta0\Default"
     return si
 
 
@@ -657,6 +658,7 @@ def open_in_vscode(target_path: str) -> tuple[bool, str]:
             subprocess.Popen(
                 ["cmd.exe", "/c", code_exe, "--new-window", target],
                 cwd=cwd,
+                startupinfo=si,
                 creationflags=subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP,
             )
         else:
@@ -877,7 +879,15 @@ class NavigatorHandler(SimpleHTTPRequestHandler):
                 elif action == "terminal":
                     success, msg = open_in_terminal(target_path)
                 elif action == "default":
-                    os.startfile(target_path)
+                    _allow_foreground_window()
+                    if os.name == "nt":
+                        subprocess.Popen(
+                            ["cmd.exe", "/c", "start", "", target_path],
+                            startupinfo=_visible_startupinfo(),
+                            creationflags=subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP,
+                        )
+                    else:
+                        os.startfile(target_path)
                     success, msg = True, "Opened default application"
                 else:
                     success, msg = False, f"Unknown action: {action}"
