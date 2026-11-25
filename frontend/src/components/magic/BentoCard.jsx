@@ -19,7 +19,7 @@ export function BentoCard({ className, onClick, children, ...props }) {
       onMouseMove={handleMove}
       onMouseLeave={() => setSpot((s) => ({ ...s, active: false }))}
       className={cn(
-        'group relative overflow-hidden rounded-xl border bg-[var(--surface)] p-4 text-left transition-colors duration-150 hover:border-[var(--border-strong)]',
+        'group relative overflow-hidden rounded-xl border bg-[var(--surface)] p-4 text-left shadow-apple transition-all duration-150 hover:border-[var(--border-strong)]',
         onClick && 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-bright)]',
         className
       )}

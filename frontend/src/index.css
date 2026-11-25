@@ -1,67 +1,85 @@
 @import "tailwindcss";
 
-/* Strict Design Anchoring — Linear Obsidian Dark & Editorial Daylight (#F9F9F7 / #111111) */
+/*
+ * Design Anchoring: Apple Light Gray Canvas & Space Gray Surfaces + Microsoft 4-Color Semantic Accents
+ * Light (Default): #F5F5F7 canvas, #FFFFFF surface, #1D1D1F ink, #6E6E73 space gray
+ * Dark (Space Gray): #111113 canvas, #1C1C1E surface, #2C2C2E elevated, #F5F5F7 ink
+ * Semantic Accents: Blue (#0067B8 / #0A84FF), Green (#107C10 / #30D158), Yellow/Amber (#D97706 / #FFB900), Red (#D13438 / #FF453A)
+ */
 :root,
-html.dark {
-  --canvas: #090a0f;
-  --surface: #11131c;
-  --surface-elevated: #171a26;
-  --surface-hover: #1e2233;
-  --input-bg: #0c0e15;
-  --border-hairline: #232838;
-  --border-strong: #343b52;
+html.light {
+  --canvas: #f5f5f7;
+  --surface: #ffffff;
+  --surface-elevated: #f9f9fb;
+  --surface-hover: #efeff4;
+  --input-bg: #f2f2f7;
+  --border-hairline: #e5e5ea;
+  --border-strong: #d1d1d6;
 
-  --ink: #f8fafc;
-  --ink-secondary: #cbd5e1;
-  --ink-muted: #8b95a9;
+  --ink: #1d1d1f;
+  --ink-secondary: #3a3a3c;
+  --ink-muted: #6e6e73;
 
-  --accent: #06b6d4;
-  --accent-bright: #22d3ee;
-  --accent-ink: #031318;
-  --accent-soft: rgba(6, 182, 212, 0.14);
+  /* Microsoft Trust Blue primary CTA */
+  --accent: #0067b8;
+  --accent-bright: #0078d4;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(0, 103, 184, 0.1);
 
-  --emerald: #10b981;
-  --emerald-soft: rgba(16, 185, 129, 0.14);
-  --amber: #f59e0b;
-  --amber-soft: rgba(245, 158, 11, 0.14);
-  --violet: #8b5cf6;
-  --violet-soft: rgba(139, 92, 246, 0.16);
-  --rose: #f43f5e;
-  --rose-soft: rgba(244, 63, 94, 0.16);
+  /* Microsoft Vibrant Green */
+  --emerald: #107c10;
+  --emerald-soft: rgba(16, 124, 16, 0.1);
 
-  --spotlight: rgba(34, 211, 238, 0.11);
-  color-scheme: dark;
+  /* Microsoft Warm Yellow/Amber */
+  --amber: #c27803;
+  --amber-soft: rgba(255, 185, 0, 0.16);
+
+  /* Accent Violet for Quarantine */
+  --violet: #5e5ce6;
+  --violet-soft: rgba(94, 92, 230, 0.1);
+
+  /* Microsoft Red */
+  --rose: #d13438;
+  --rose-soft: rgba(209, 52, 56, 0.1);
+
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
+  --spotlight: rgba(0, 103, 184, 0.06);
+  color-scheme: light;
 }
 
-html.light {
-  --canvas: #f9f9f7;
-  --surface: #ffffff;
-  --surface-elevated: #f3f3ef;
-  --surface-hover: #eaeae4;
-  --input-bg: #f5f5f2;
-  --border-hairline: #e4e4dd;
-  --border-strong: #cfcfc5;
+html.dark {
+  --canvas: #111113;
+  --surface: #1c1c1e;
+  --surface-elevated: #242426;
+  --surface-hover: #2c2c2e;
+  --input-bg: #161618;
+  --border-hairline: #2c2c2e;
+  --border-strong: #3a3a3c;
 
-  --ink: #111111;
-  --ink-secondary: #3f3f46;
-  --ink-muted: #71717a;
+  --ink: #f5f5f7;
+  --ink-secondary: #d1d1d6;
+  --ink-muted: #8e8e93;
 
-  --accent: #111111;
-  --accent-bright: #0284c7;
+  --accent: #0a84ff;
+  --accent-bright: #409cff;
   --accent-ink: #ffffff;
-  --accent-soft: rgba(2, 132, 199, 0.1);
+  --accent-soft: rgba(10, 132, 255, 0.16);
 
-  --emerald: #059669;
-  --emerald-soft: rgba(5, 150, 105, 0.1);
-  --amber: #d97706;
-  --amber-soft: rgba(217, 119, 6, 0.1);
-  --violet: #7c3aed;
-  --violet-soft: rgba(124, 58, 237, 0.1);
-  --rose: #e11d48;
-  --rose-soft: rgba(225, 29, 72, 0.1);
+  --emerald: #30d158;
+  --emerald-soft: rgba(48, 209, 88, 0.15);
 
-  --spotlight: rgba(2, 132, 199, 0.08);
-  color-scheme: light;
+  --amber: #ffd60a;
+  --amber-soft: rgba(255, 214, 10, 0.15);
+
+  --violet: #bf5af2;
+  --violet-soft: rgba(191, 90, 242, 0.16);
+
+  --rose: #ff453a;
+  --rose-soft: rgba(255, 69, 58, 0.16);
+
+  --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+  --spotlight: rgba(10, 132, 255, 0.12);
+  color-scheme: dark;
 }
 
 @layer base {
@@ -70,7 +88,7 @@ html.light {
   }
 
   body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
     background-color: var(--canvas);
     color: var(--ink);
     -webkit-font-smoothing: antialiased;
@@ -85,7 +103,10 @@ html.light {
   }
 }
 
-/* Magic UI / Aceternity-inspired purposeful animations */
+.shadow-apple {
+  box-shadow: var(--card-shadow);
+}
+
 @keyframes shimmer-sweep {
   0% {
     transform: translateX(-120%) skewX(-18deg);

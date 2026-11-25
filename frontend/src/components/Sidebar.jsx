@@ -36,8 +36,14 @@ export function Sidebar({
     <aside className="flex w-full shrink-0 flex-col border-b bg-[var(--surface)] lg:sticky lg:top-0 lg:h-screen lg:w-[272px] lg:border-r lg:border-b-0">
       {/* Brand */}
       <div className="flex items-center gap-3 border-b px-5 py-4">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] text-[var(--accent-ink)]">
-          <Zap className="h-4 w-4" />
+        <div
+          className="grid h-9 w-9 shrink-0 grid-cols-2 gap-0.5 rounded-lg border bg-[var(--surface-elevated)] p-1.5 shadow-apple"
+          aria-hidden="true"
+        >
+          <span className="rounded-[2px] bg-[#D13438]" />
+          <span className="rounded-[2px] bg-[#107C10]" />
+          <span className="rounded-[2px] bg-[#0067B8]" />
+          <span className="rounded-[2px] bg-[#FFB900]" />
         </div>
         <div className="min-w-0 flex-1">
           <div className="truncate text-[14px] font-semibold tracking-tight text-[var(--ink)]">
@@ -162,8 +168,8 @@ export function Sidebar({
             onClick={onToggleTheme}
             className="flex min-h-[44px] items-center justify-center gap-2 rounded-lg border bg-[var(--surface-elevated)] px-3 text-[12px] font-medium text-[var(--ink-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--ink)] cursor-pointer"
           >
-            {theme === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
-            <span>{theme === 'dark' ? 'Daylight' : 'Obsidian'}</span>
+            {theme === 'light' ? <Moon className="h-3.5 w-3.5" /> : <Sun className="h-3.5 w-3.5" />}
+            <span>{theme === 'light' ? 'Space Gray' : 'Light Gray'}</span>
           </button>
           <button
             type="button"

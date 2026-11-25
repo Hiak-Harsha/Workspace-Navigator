@@ -41,7 +41,7 @@ export default function App() {
   const [sortBy, setSortBy] = useState('name');
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState(() => localStorage.getItem('wn_view_mode') || 'grid');
-  const [theme, setTheme] = useState(() => localStorage.getItem('wn_ui_theme') || 'dark');
+  const [theme, setTheme] = useState(() => localStorage.getItem('wn_theme_v2') || 'light');
 
   const [previewPath, setPreviewPath] = useState(null);
   const [cleanOpen, setCleanOpen] = useState(false);
@@ -57,8 +57,8 @@ export default function App() {
   useEffect(() => {
     const html = document.documentElement;
     html.classList.remove('dark', 'light');
-    html.classList.add(theme === 'light' ? 'light' : 'dark');
-    localStorage.setItem('wn_ui_theme', theme);
+    html.classList.add(theme === 'dark' ? 'dark' : 'light');
+    localStorage.setItem('wn_theme_v2', theme);
   }, [theme]);
 
   useEffect(() => {

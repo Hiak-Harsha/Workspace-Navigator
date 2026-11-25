@@ -67,7 +67,7 @@ export function ProjectCard({
   return (
     <article
       className={cn(
-        'group rounded-xl border bg-[var(--surface)] transition-all duration-150 hover:border-[var(--border-strong)] hover:bg-[var(--surface-elevated)] animate-fade-up',
+        'group rounded-xl border bg-[var(--surface)] shadow-apple transition-all duration-150 hover:border-[var(--border-strong)] hover:bg-[var(--surface-elevated)] animate-fade-up',
         isList ? 'flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between' : 'flex flex-col justify-between p-4'
       )}
     >
