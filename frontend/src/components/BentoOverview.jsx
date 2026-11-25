@@ -21,37 +21,79 @@ export function BentoOverview({
       (r.git_info?.dirty_count || 0) > 0
   );
 
+  const syncedCount = Math.max(0, (stats.git_repos || 0) - attentionRepos.length);
+  const totalSafe = Math.max(1, stats.total || 1);
+  const syncedPct = Math.round((syncedCount / Math.max(1, stats.git_repos || 1)) * 100);
+  const attnPct = 100 - syncedPct;
+
   return (
-    <section aria-label="Workspace Bento Overview" className="grid grid-cols-1 gap-3 md:grid-cols-12">
-      {/* Primary Bento Tile: Workspace Pulse + Live Repo Marquee */}
-      <BentoCard className="md:col-span-6 flex flex-col justify-between">
+    <section
+      aria-label="Workspace Bento Overview"
+      className="grid grid-cols-1 gap-3.5 md:grid-cols-2 xl:grid-cols-12"
+    >
+      {/* Hero Bento Card: Apple Clean Surface + Ambient Hybrid Pulse + Repo Marquee */}
+      <BentoCard className="md:col-span-2 xl:col-span-6 flex flex-col justify-between overflow-hidden">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full opacity-20 blur-3xl"
+          style={{
+            background: 'linear-gradient(135deg, #0067B8 0%, #107C10 55%, #FFB900 100%)',
+          }}
+        />
         <div className="flex items-start justify-between gap-4">
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-widest text-[var(--ink-muted)]">
               <Layers className="h-3.5 w-3.5 text-[var(--accent-bright)]" />
-              <span>Workspace Index</span>
+              <span>Workspace Command</span>
             </div>
-            <div className="mt-2 flex items-baseline gap-3">
+            <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
               <span className="text-3xl font-bold tracking-tight text-[var(--ink)]">
                 <NumberTicker value={stats.total ?? 0} />
               </span>
-              <span className="text-[12px] text-[var(--ink-muted)]">
-                across {stats.categories ?? 0} organized categories
+              <span className="text-[12.5px] text-[var(--ink-muted)]">
+                items indexed across {stats.categories ?? 0} domains
               </span>
             </div>
           </div>
+
           <button
             type="button"
             onClick={onFilterAll}
-            className="min-h-[36px] rounded-lg border bg-[var(--surface-elevated)] px-3 text-[12px] font-medium text-[var(--ink-secondary)] hover:text-[var(--ink)] cursor-pointer"
+            className="min-h-[36px] shrink-0 rounded-lg border bg-[var(--surface-elevated)] px-3 text-[12px] font-semibold text-[var(--ink-secondary)] hover:border-[var(--border-strong)] hover:text-[var(--ink)] cursor-pointer"
           >
             View All
           </button>
         </div>
 
-        {/* Magic UI-inspired Marquee strip of Git Repos */}
+        {/* Niche Touch: Live Microsoft 4-Color Workspace Health Segment Bar */}
+        <div className="mt-3.5 space-y-1.5">
+          <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-[var(--input-bg)]">
+            <div
+              className="h-full bg-[#0067B8]"
+              style={{ width: `${Math.min(100, Math.round(((stats.git_repos || 0) / totalSafe) * 100))}%` }}
+              title={`Git Repositories: ${stats.git_repos || 0}`}
+            />
+            <div
+              className="h-full bg-[#107C10]"
+              style={{ width: `${Math.min(100, Math.round((syncedCount / totalSafe) * 100))}%` }}
+              title={`Synced Repos: ${syncedCount}`}
+            />
+            <div
+              className="h-full bg-[#FFB900]"
+              style={{ width: `${Math.min(100, Math.round((attentionRepos.length / totalSafe) * 100))}%` }}
+              title={`Attention Needed: ${attentionRepos.length}`}
+            />
+            <div
+              className="h-full bg-[#D13438]"
+              style={{ width: `${Math.min(100, Math.round(((stats.quarantine_count || 0) / totalSafe) * 100))}%` }}
+              title={`Quarantined Redundant: ${stats.quarantine_count || 0}`}
+            />
+          </div>
+        </div>
+
+        {/* Live Repo Marquee */}
         {gitRepos.length > 0 && (
-          <div className="mt-4 overflow-hidden rounded-lg border bg-[var(--input-bg)] py-1.5">
+          <div className="mt-3 overflow-hidden rounded-lg border bg-[var(--input-bg)] py-1.5">
             <div className="animate-marquee gap-2 px-2">
               {[...gitRepos, ...gitRepos].map((repo, idx) => (
                 <button
@@ -72,15 +114,18 @@ export function BentoOverview({
         )}
       </BentoCard>
 
-      {/* Bento Tile 2: Active Git Repositories & Attention */}
-      <BentoCard className="md:col-span-3 flex flex-col justify-between" onClick={onFilterGit}>
-        <div className="flex items-center justify-between">
+      {/* Bento Tile 2: Git Repositories */}
+      <BentoCard className="xl:col-span-3 flex flex-col justify-between" onClick={onFilterGit}>
+        <div className="flex items-center justify-between gap-2">
           <span className="text-[11px] font-semibold uppercase tracking-widest text-[var(--ink-muted)]">
             Git Repositories
           </span>
-          <FolderGit2 className="h-4 w-4 text-[var(--emerald)]" />
+          <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--emerald-soft)] text-[var(--emerald)]">
+            <FolderGit2 className="h-4 w-4" />
+          </span>
         </div>
-        <div className="mt-2 flex items-baseline gap-2.5">
+
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <span className="text-3xl font-bold tracking-tight text-[var(--ink)]">
             <NumberTicker value={stats.git_repos ?? 0} />
           </span>
@@ -94,24 +139,34 @@ export function BentoOverview({
               className="cursor-pointer"
             >
               <ShieldAlert className="h-3 w-3" />
-              {attentionRepos.length} need attention
+              {attentionRepos.length} attention
             </Badge>
           )}
         </div>
-        <div className="mt-3 text-[11px] text-[var(--ink-muted)]">
-          Workspace, Home, Desktop &amp; Open-Source forks
+
+        <div className="mt-3 space-y-1">
+          <div className="flex h-1 w-full overflow-hidden rounded-full bg-[var(--input-bg)]">
+            <div className="h-full bg-[var(--emerald)]" style={{ width: `${syncedPct}%` }} />
+            <div className="h-full bg-[var(--amber)]" style={{ width: `${attnPct}%` }} />
+          </div>
+          <div className="text-[11px] text-[var(--ink-muted)]">
+            {syncedCount} synced · {attentionRepos.length} unpushed/dirty
+          </div>
         </div>
       </BentoCard>
 
-      {/* Bento Tile 3: Quarantine Vault (One-Place Redundant Staging) */}
-      <BentoCard className="md:col-span-3 flex flex-col justify-between" onClick={onOpenQuarantine}>
-        <div className="flex items-center justify-between">
+      {/* Bento Tile 3: Quarantine Vault */}
+      <BentoCard className="xl:col-span-3 flex flex-col justify-between" onClick={onOpenQuarantine}>
+        <div className="flex items-center justify-between gap-2">
           <span className="text-[11px] font-semibold uppercase tracking-widest text-[var(--ink-muted)]">
             Quarantine Vault
           </span>
-          <Archive className="h-4 w-4 text-[var(--violet)]" />
+          <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--violet-soft)] text-[var(--violet)]">
+            <Archive className="h-4 w-4" />
+          </span>
         </div>
-        <div className="mt-2 flex items-baseline gap-2.5">
+
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <span className="text-3xl font-bold tracking-tight text-[var(--ink)]">
             <NumberTicker value={stats.quarantine_count ?? 0} />
           </span>
@@ -119,8 +174,9 @@ export function BentoOverview({
             {formatBytes(stats.quarantine_bytes || 0)}
           </Badge>
         </div>
+
         <div className="mt-3 text-[11px] text-[var(--ink-muted)]">
-          Redundant items staged for 1-click removal
+          Redundant files staged in one place
         </div>
       </BentoCard>
     </section>

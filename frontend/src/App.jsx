@@ -287,8 +287,8 @@ export default function App() {
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Top Command Header */}
-        <header className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3 border-b bg-[var(--surface)]/95 px-6 py-3 backdrop-blur-md">
-          <div className="flex min-w-[240px] flex-1 items-center gap-2.5 max-w-[520px]">
+        <header className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-2.5 border-b bg-[var(--surface-glass)] px-5 py-3 backdrop-blur-xl">
+          <div className="flex min-w-[210px] flex-1 items-center gap-2 max-w-[440px]">
             {!sidebarOpen && (
               <Button
                 variant="secondary"
@@ -300,26 +300,26 @@ export default function App() {
                 <PanelLeftOpen className="h-4 w-4" />
               </Button>
             )}
-            <div className="flex min-h-[44px] w-full items-center gap-2.5 rounded-lg border bg-[var(--input-bg)] px-3 focus-within:border-[var(--accent-bright)]">
-              <Search className="h-4 w-4 text-[var(--ink-muted)]" />
+            <div className="flex min-h-[44px] w-full items-center gap-2 rounded-xl border bg-[var(--input-bg)] px-3 focus-within:border-[var(--accent-bright)]">
+              <Search className="h-4 w-4 shrink-0 text-[var(--ink-muted)]" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Filter workspace or press Ctrl+K..."
-                className="w-full bg-transparent text-[13px] text-[var(--ink)] outline-none placeholder:text-[var(--ink-muted)]"
+                placeholder="Search workspace or press Ctrl+K..."
+                className="min-w-0 w-full bg-transparent text-[13px] text-[var(--ink)] outline-none placeholder:text-[var(--ink-muted)]"
               />
               <button
                 type="button"
                 onClick={() => setCmdOpen(true)}
-                className="rounded border bg-[var(--surface-elevated)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--ink-muted)] hover:text-[var(--ink)] cursor-pointer"
+                className="shrink-0 rounded border bg-[var(--surface)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--ink-muted)] hover:text-[var(--ink)] cursor-pointer"
               >
                 Ctrl K
               </button>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2">
             <ShimmerButton onClick={() => setCleanOpen(true)}>
               <Sparkles className="h-4 w-4" />
               <span>Clean Desktop</span>
@@ -331,7 +331,7 @@ export default function App() {
             >
               <ShieldCheck className="h-4 w-4" />
               <span>
-                Redundant Audit{stats.quarantine_count ? ` (${stats.quarantine_count})` : ''}
+                Redundant{stats.quarantine_count ? ` (${stats.quarantine_count})` : ' Audit'}
               </span>
             </Button>
 
@@ -349,17 +349,17 @@ export default function App() {
 
             <Button
               variant="outline"
-              title="Close Dashboard or Stop Server"
+              title="Stop Server or Close Window"
               onClick={() => setCloseDialogOpen(true)}
             >
               <Power className="h-4 w-4" />
-              <span>Close</span>
+              <span>Exit</span>
             </Button>
           </div>
         </header>
 
         {/* Main Content */}
-        <main className="mx-auto w-full max-w-[1440px] flex-1 space-y-6 p-6">
+        <main className="mx-auto w-full max-w-[1460px] flex-1 space-y-5 p-5">
           <BentoOverview
             stats={stats}
             gitRepos={gitRepos}
@@ -461,7 +461,7 @@ export default function App() {
             <section
               className={cn(
                 viewMode === 'grid'
-                  ? 'grid grid-cols-1 gap-3.5 md:grid-cols-2 xl:grid-cols-3'
+                  ? 'grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3.5'
                   : 'flex flex-col gap-2'
               )}
             >
