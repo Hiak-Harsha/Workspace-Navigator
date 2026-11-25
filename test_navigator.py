@@ -277,12 +277,13 @@ class TestNavigatorUniversal(unittest.TestCase):
             file_with_spaces = folder / "my script.py"
             file_with_spaces.write_text("print(1)\n", encoding="utf-8")
 
-            with mock.patch.object(srv.os, "startfile", create=True) as startfile_mock, mock.patch.object(
-                srv.subprocess, "Popen"
-            ) as popen_mock:
+            with mock.patch.object(srv.subprocess, "Popen") as popen_mock:
                 ok, _ = srv.open_in_explorer(str(folder))
                 self.assertTrue(ok)
-                startfile_mock.assert_called_once_with(str(folder.resolve()))
+                args, kwargs = popen_mock.call_args
+                self.assertEqual(args[0], ["explorer.exe", str(folder.resolve())])
+                self.assertIsNotNone(kwargs.get("startupinfo"))
+                self.assertEqual(kwargs["startupinfo"].wShowWindow, 1)
 
                 ok, _ = srv.open_in_explorer(str(file_with_spaces))
                 self.assertTrue(ok)

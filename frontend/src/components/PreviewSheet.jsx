@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowUp, Code2, ExternalLink, FileText, Folder, FolderOpen, GitBranch, Terminal } from 'lucide-react';
 import { api } from '../lib/api';
-import { formatBytes } from '../lib/utils';
+import { formatBytes, toWebRepoUrl } from '../lib/utils';
 import { Button } from './ui/Button';
 import { Sheet } from './ui/Sheet';
 
@@ -33,6 +33,7 @@ export function PreviewSheet({ targetPath, onClose, onNavigate, onOpenAction }) 
 
   const currentTarget = data?.path || targetPath;
   const dirTarget = data?.kind === 'file' ? (data?.parent_path || currentTarget) : currentTarget;
+  const githubUrl = toWebRepoUrl(data?.git_info?.remote_url);
 
   return (
     <Sheet
@@ -58,6 +59,15 @@ export function PreviewSheet({ targetPath, onClose, onNavigate, onOpenAction }) 
             <Button size="sm" variant="secondary" onClick={() => onOpenAction('terminal', dirTarget)}>
               <Terminal className="h-3.5 w-3.5" /> Terminal
             </Button>
+            {githubUrl && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => window.open(githubUrl, '_blank', 'noopener,noreferrer')}
+              >
+                <ExternalLink className="h-3.5 w-3.5" /> GitHub
+              </Button>
+            )}
             {data.kind === 'file' && (
               <Button size="sm" variant="outline" onClick={() => onOpenAction('default', currentTarget)}>
                 <ExternalLink className="h-3.5 w-3.5" /> Default App
@@ -92,24 +102,47 @@ export function PreviewSheet({ targetPath, onClose, onNavigate, onOpenAction }) 
                 </div>
                 <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                   {(data.entries || []).map((entry) => (
-                    <button
+                    <div
                       key={entry.path}
-                      type="button"
-                      onClick={() => onNavigate(entry.path)}
-                      className="flex items-center justify-between gap-2 rounded-lg border bg-[var(--surface)] px-3 py-2 text-left font-mono text-[11px] text-[var(--ink-secondary)] transition hover:border-[var(--accent-bright)] hover:text-[var(--ink)] cursor-pointer"
+                      className="flex items-center justify-between gap-1.5 rounded-lg border bg-[var(--surface)] px-2.5 py-1.5 font-mono text-[11px] text-[var(--ink-secondary)] transition hover:border-[var(--accent-bright)]"
                     >
-                      <span className="flex min-w-0 items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onNavigate(entry.path)}
+                        className="flex min-w-0 flex-1 items-center gap-2 py-0.5 text-left hover:text-[var(--ink)] cursor-pointer"
+                        title={entry.is_dir ? `Open folder: ${entry.name}` : `Inspect file: ${entry.name}`}
+                      >
                         {entry.is_dir ? (
                           <Folder className="h-3.5 w-3.5 shrink-0 text-[var(--accent-bright)]" />
                         ) : (
                           <FileText className="h-3.5 w-3.5 shrink-0 text-[var(--ink-muted)]" />
                         )}
                         <span className="truncate">{entry.name}</span>
-                      </span>
-                      <span className="shrink-0 text-[10px] text-[var(--ink-muted)]">
-                        {entry.is_dir ? 'DIR' : formatBytes(entry.size)}
-                      </span>
-                    </button>
+                      </button>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <span className="text-[10px] text-[var(--ink-muted)] mr-0.5">
+                          {entry.is_dir ? 'DIR' : formatBytes(entry.size)}
+                        </span>
+                        {!entry.is_dir && (
+                          <button
+                            type="button"
+                            onClick={() => onOpenAction('default', entry.path)}
+                            title={`Open ${entry.name} in Default App`}
+                            className="inline-flex h-6 w-6 items-center justify-center rounded border bg-[var(--surface-elevated)] text-[var(--ink-secondary)] hover:border-[var(--accent-bright)] hover:text-[var(--accent-bright)] cursor-pointer"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => onOpenAction('explorer', entry.path)}
+                          title={entry.is_dir ? `Open ${entry.name} in Explorer` : `Reveal ${entry.name} in Explorer`}
+                          className="inline-flex h-6 w-6 items-center justify-center rounded border bg-[var(--surface-elevated)] text-[var(--ink-secondary)] hover:border-[var(--accent-bright)] hover:text-[var(--accent-bright)] cursor-pointer"
+                        >
+                          <FolderOpen className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>

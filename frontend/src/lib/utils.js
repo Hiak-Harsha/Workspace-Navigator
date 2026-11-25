@@ -23,3 +23,20 @@ export function naturalCompare(a, b) {
     sensitivity: 'base',
   });
 }
+
+export function toWebRepoUrl(remoteUrl) {
+  if (!remoteUrl) return '';
+  let url = String(remoteUrl).trim();
+  const sshMatch = url.match(/^git@([^:]+):(.+?)(?:\.git)?$/i);
+  if (sshMatch) {
+    return `https://${sshMatch[1]}/${sshMatch[2]}`;
+  }
+  const sshProtoMatch = url.match(/^ssh:\/\/(?:git@)?([^/]+)\/(.+?)(?:\.git)?$/i);
+  if (sshProtoMatch) {
+    return `https://${sshProtoMatch[1]}/${sshProtoMatch[2]}`;
+  }
+  if (/^https?:\/\//i.test(url)) {
+    return url.replace(/\.git$/i, '');
+  }
+  return '';
+}

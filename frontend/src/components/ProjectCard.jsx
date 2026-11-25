@@ -2,6 +2,7 @@ import React from 'react';
 import {
   Code2,
   Copy,
+  ExternalLink,
   Eye,
   FileText,
   Folder,
@@ -12,7 +13,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { Badge } from './ui/Badge';
-import { cn, formatBytes } from '../lib/utils';
+import { cn, formatBytes, toWebRepoUrl } from '../lib/utils';
 
 function GitStatusBadge({ item }) {
   if (!item.is_git) return null;
@@ -20,6 +21,23 @@ function GitStatusBadge({ item }) {
   if (!g) return <Badge tone="emerald">GIT</Badge>;
 
   const branch = g.branch || 'git';
+  const webUrl = toWebRepoUrl(g.remote_url);
+
+  const wrapLink = (badgeEl) =>
+    webUrl ? (
+      <a
+        href={webUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={`Open on GitHub: ${webUrl}`}
+        className="inline-flex transition-opacity hover:opacity-80"
+      >
+        {badgeEl}
+      </a>
+    ) : (
+      badgeEl
+    );
+
   if (!g.has_remote) {
     return (
       <Badge tone="amber" title="Local Git repo without GitHub remote">
@@ -29,25 +47,28 @@ function GitStatusBadge({ item }) {
     );
   }
   if (g.unpushed_count > 0) {
-    return (
-      <Badge tone="violet" title={`${g.unpushed_count} unpushed commit(s)`}>
+    return wrapLink(
+      <Badge tone="violet" title={`${g.unpushed_count} unpushed commit(s) — Click to open GitHub`}>
         <GitBranch className="h-3 w-3" />
         {branch} · ↑{g.unpushed_count}
+        {webUrl && <ExternalLink className="h-2.5 w-2.5 opacity-75" />}
       </Badge>
     );
   }
   if (g.dirty_count > 0) {
-    return (
-      <Badge tone="accent" title={`${g.dirty_count} uncommitted change(s)`}>
+    return wrapLink(
+      <Badge tone="accent" title={`${g.dirty_count} uncommitted change(s) — Click to open GitHub`}>
         <GitBranch className="h-3 w-3" />
         {branch} · *{g.dirty_count}
+        {webUrl && <ExternalLink className="h-2.5 w-2.5 opacity-75" />}
       </Badge>
     );
   }
-  return (
-    <Badge tone="emerald" title="Synced with remote">
+  return wrapLink(
+    <Badge tone="emerald" title={webUrl ? `Open on GitHub: ${webUrl}` : 'Synced with remote'}>
       <GitBranch className="h-3 w-3" />
       {branch}
+      {webUrl && <ExternalLink className="h-2.5 w-2.5 opacity-75" />}
     </Badge>
   );
 }
@@ -62,6 +83,7 @@ export function ProjectCard({
   onCopyPath,
 }) {
   const actionTarget = item.path;
+  const githubUrl = toWebRepoUrl(item.git_info?.remote_url);
   const isList = viewMode === 'list';
 
   return (
@@ -152,11 +174,18 @@ export function ProjectCard({
           </div>
         )}
 
-        <div className="grid grid-cols-4 gap-1.5">
+        <div className={cn('grid gap-1.5', githubUrl ? 'grid-cols-5' : 'grid-cols-4')}>
           <CardActionBtn icon={Eye} label="Preview" onClick={() => onPreview(item.path)} />
           <CardActionBtn icon={FolderOpen} label="Files" onClick={() => onOpenAction('explorer', actionTarget)} />
           <CardActionBtn icon={Code2} label="Code" onClick={() => onOpenAction('vscode', actionTarget)} />
           <CardActionBtn icon={Terminal} label="Term" onClick={() => onOpenAction('terminal', actionTarget)} />
+          {githubUrl && (
+            <CardActionBtn
+              icon={ExternalLink}
+              label="GitHub"
+              onClick={() => window.open(githubUrl, '_blank', 'noopener,noreferrer')}
+            />
+          )}
         </div>
       </div>
     </article>

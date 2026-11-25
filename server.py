@@ -613,14 +613,27 @@ def _visible_startupinfo() -> Any:
     return si
 
 
+def _allow_foreground_window() -> None:
+    """Permit newly launched Explorer/VS Code/Terminal windows to come to the foreground on Windows."""
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.user32.AllowSetForegroundWindow(-1)  # ASFW_ANY
+    except Exception:
+        pass
+
+
 def open_in_explorer(target_path: str) -> tuple[bool, str]:
     """Deterministically open the exact folder or highlight the exact file in Windows Explorer."""
     p = Path(target_path).resolve()
     if os.name != "nt":
         return False, "Explorer is only available on Windows"
+    _allow_foreground_window()
     si = _visible_startupinfo()
     if p.is_dir():
-        os.startfile(str(p))
+        subprocess.Popen(["explorer.exe", str(p)], startupinfo=si)
     else:
         # Pass unquoted /select, with quoted path so paths containing spaces select properly
         subprocess.Popen(f'explorer.exe /select,"{str(p)}"', startupinfo=si)
@@ -632,6 +645,7 @@ def open_in_vscode(target_path: str) -> tuple[bool, str]:
     if not code_exe:
         return False, "VS Code executable not found on system"
 
+    _allow_foreground_window()
     p = Path(target_path).resolve()
     target = str(p if p.is_dir() else p.parent)
     cwd = os.path.dirname(code_exe) or None
