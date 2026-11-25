@@ -2,10 +2,12 @@
 
 from http.server import ThreadingHTTPServer
 import json
+import os
 import sys
 import tempfile
 import threading
 import unittest
+from unittest import mock
 from pathlib import Path
 import urllib.error
 import urllib.parse
@@ -142,6 +144,9 @@ class TestNavigatorUniversal(unittest.TestCase):
             try:
                 self.assertFalse(srv.is_within_managed_roots(ws))
                 self.assertFalse(srv.is_within_managed_roots(dt))
+                self.assertTrue(srv.is_within_preview_roots(ws))
+                self.assertTrue(srv.is_within_preview_roots(dt))
+                self.assertFalse(srv.is_within_preview_roots(Path(tmp) / "Other"))
                 self.assertFalse(srv.is_within_managed_roots(Path(tmp) / "Other"))
                 self.assertTrue(srv.is_within_managed_roots(ws / "03_Development_Projects" / "app"))
             finally:
@@ -260,6 +265,63 @@ class TestNavigatorUniversal(unittest.TestCase):
                     srv.FAVORITES_FILE = old_fav
                     srv.ORGANIZER_CONFIG_FILE = old_cfg_file
                     srv.invalidate_caches()
+
+
+    def test_open_launchers_use_visible_window_and_safe_quoting(self):
+        if os.name != "nt":
+            self.skipTest("Windows-specific launcher behavior")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp) / "My Folder With Spaces"
+            folder.mkdir()
+            file_with_spaces = folder / "my script.py"
+            file_with_spaces.write_text("print(1)\n", encoding="utf-8")
+
+            with mock.patch.object(srv.os, "startfile", create=True) as startfile_mock, mock.patch.object(
+                srv.subprocess, "Popen"
+            ) as popen_mock:
+                ok, _ = srv.open_in_explorer(str(folder))
+                self.assertTrue(ok)
+                startfile_mock.assert_called_once_with(str(folder.resolve()))
+
+                ok, _ = srv.open_in_explorer(str(file_with_spaces))
+                self.assertTrue(ok)
+                args, kwargs = popen_mock.call_args
+                self.assertEqual(args[0], f'explorer.exe /select,"{str(file_with_spaces.resolve())}"')
+                self.assertIsNotNone(kwargs.get("startupinfo"))
+                self.assertEqual(kwargs["startupinfo"].wShowWindow, 1)
+
+            with mock.patch.object(srv, "find_vscode_exe", return_value=r"C:\VSCode\Code.exe"), mock.patch.object(
+                srv.subprocess, "Popen"
+            ) as popen_mock:
+                ok, _ = srv.open_in_vscode(str(folder))
+                self.assertTrue(ok)
+                args, kwargs = popen_mock.call_args
+                self.assertEqual(args[0], [r"C:\VSCode\Code.exe", str(folder.resolve())])
+                self.assertIsNotNone(kwargs.get("startupinfo"))
+                self.assertEqual(kwargs["startupinfo"].wShowWindow, 1)
+                self.assertTrue(kwargs["creationflags"] & srv.subprocess.CREATE_NEW_PROCESS_GROUP)
+
+            with mock.patch.object(srv, "find_vscode_exe", return_value=r"C:\VSCode\bin\code.cmd"), mock.patch.object(
+                srv.subprocess, "Popen"
+            ) as popen_mock:
+                ok, _ = srv.open_in_vscode(str(folder))
+                self.assertTrue(ok)
+                args, kwargs = popen_mock.call_args
+                self.assertEqual(args[0], ["cmd.exe", "/c", r"C:\VSCode\bin\code.cmd", str(folder.resolve())])
+                self.assertTrue(kwargs["creationflags"] & srv.subprocess.CREATE_NO_WINDOW)
+
+            with mock.patch.object(srv.subprocess, "Popen") as popen_mock:
+                ok, _ = srv.open_in_terminal(str(file_with_spaces))
+                self.assertTrue(ok)
+                args, kwargs = popen_mock.call_args
+                self.assertEqual(args[0][0], "powershell.exe")
+                self.assertIn(str(folder.resolve()), args[0][-1])
+                self.assertEqual(kwargs.get("cwd"), str(folder.resolve()))
+                self.assertIsNotNone(kwargs.get("startupinfo"))
+                self.assertEqual(kwargs["startupinfo"].wShowWindow, 1)
+                self.assertTrue(kwargs["creationflags"] & 0x00000010)  # CREATE_NEW_CONSOLE
+                self.assertFalse(kwargs["creationflags"] & 0x00000008)  # not DETACHED_PROCESS
 
 
 if __name__ == "__main__":

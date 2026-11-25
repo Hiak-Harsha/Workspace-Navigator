@@ -31,7 +31,8 @@ export function PreviewSheet({ targetPath, onClose, onNavigate, onOpenAction }) 
     };
   }, [targetPath]);
 
-  const repoTarget = data?.git_info?.path || data?.path || targetPath;
+  const currentTarget = data?.path || targetPath;
+  const dirTarget = data?.kind === 'file' ? (data?.parent_path || currentTarget) : currentTarget;
 
   return (
     <Sheet
@@ -48,17 +49,17 @@ export function PreviewSheet({ targetPath, onClose, onNavigate, onOpenAction }) 
                 <ArrowUp className="h-3.5 w-3.5" /> Up
               </Button>
             )}
-            <Button size="sm" variant="primary" onClick={() => onOpenAction('explorer', data.path)}>
+            <Button size="sm" variant="primary" onClick={() => onOpenAction('explorer', currentTarget)}>
               <FolderOpen className="h-3.5 w-3.5" /> Explorer
             </Button>
-            <Button size="sm" variant="secondary" onClick={() => onOpenAction('vscode', repoTarget)}>
+            <Button size="sm" variant="secondary" onClick={() => onOpenAction('vscode', dirTarget)}>
               <Code2 className="h-3.5 w-3.5" /> VS Code
             </Button>
-            <Button size="sm" variant="secondary" onClick={() => onOpenAction('terminal', repoTarget)}>
+            <Button size="sm" variant="secondary" onClick={() => onOpenAction('terminal', dirTarget)}>
               <Terminal className="h-3.5 w-3.5" /> Terminal
             </Button>
             {data.kind === 'file' && (
-              <Button size="sm" variant="outline" onClick={() => onOpenAction('default', data.path)}>
+              <Button size="sm" variant="outline" onClick={() => onOpenAction('default', currentTarget)}>
                 <ExternalLink className="h-3.5 w-3.5" /> Default App
               </Button>
             )}

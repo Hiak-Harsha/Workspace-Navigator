@@ -134,6 +134,8 @@ def is_within_preview_roots(target_path: Path) -> bool:
         return True
     try:
         resolved = target_path.resolve()
+        if resolved in (get_workspace_dir().resolve(), get_desktop_dir().resolve()):
+            return True
         with STATE_LOCK:
             extra_roots = list(RUNTIME_CFG.get("extra_scan_roots", []))
         for entry in extra_roots:
@@ -601,15 +603,27 @@ def find_vscode_exe() -> str | None:
     return None
 
 
+def _visible_startupinfo() -> Any:
+    """Ensure child GUI/console windows open visibly even when server.py was launched hidden."""
+    if os.name != "nt":
+        return None
+    si = subprocess.STARTUPINFO()
+    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    si.wShowWindow = 1  # SW_SHOWNORMAL
+    return si
+
+
 def open_in_explorer(target_path: str) -> tuple[bool, str]:
     """Deterministically open the exact folder or highlight the exact file in Windows Explorer."""
     p = Path(target_path).resolve()
     if os.name != "nt":
         return False, "Explorer is only available on Windows"
+    si = _visible_startupinfo()
     if p.is_dir():
-        subprocess.Popen(["explorer.exe", str(p)])
+        os.startfile(str(p))
     else:
-        subprocess.Popen(["explorer.exe", f"/select,{str(p)}"])
+        # Pass unquoted /select, with quoted path so paths containing spaces select properly
+        subprocess.Popen(f'explorer.exe /select,"{str(p)}"', startupinfo=si)
     return True, "Opened in File Explorer"
 
 
@@ -618,20 +632,38 @@ def open_in_vscode(target_path: str) -> tuple[bool, str]:
     if not code_exe:
         return False, "VS Code executable not found on system"
 
-    target = str(Path(target_path).resolve())
+    p = Path(target_path).resolve()
+    target = str(p if p.is_dir() else p.parent)
     cwd = os.path.dirname(code_exe) or None
-    flags = (0x00000008 | 0x00000200) if os.name == "nt" else 0
-    subprocess.Popen([code_exe, target], cwd=cwd, creationflags=flags)
+    si = _visible_startupinfo()
+    if os.name == "nt":
+        if code_exe.lower().endswith((".cmd", ".bat")):
+            subprocess.Popen(
+                ["cmd.exe", "/c", code_exe, target],
+                cwd=cwd,
+                creationflags=subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP,
+            )
+        else:
+            subprocess.Popen(
+                [code_exe, target],
+                cwd=cwd,
+                startupinfo=si,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+            )
+    else:
+        subprocess.Popen([code_exe, target], cwd=cwd)
     return True, "Opened in VS Code"
 
 
 def open_in_terminal(target_path: str) -> tuple[bool, str]:
-    p = Path(target_path)
+    p = Path(target_path).resolve()
     target_dir = str(p if p.is_dir() else p.parent)
     if os.name == "nt":
-        flags = 0x00000008 | 0x00000200
-        cmd = ["powershell.exe", "-NoExit", "-Command", f"Set-Location -LiteralPath '{target_dir}'"]
-        subprocess.Popen(cmd, creationflags=flags)
+        # CREATE_NEW_CONSOLE (0x00000010) allocates a visible window; DETACHED_PROCESS hides it.
+        flags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0x00000010) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+        escaped_dir = target_dir.replace("'", "''")
+        cmd = ["powershell.exe", "-NoExit", "-Command", f"Set-Location -LiteralPath '{escaped_dir}'"]
+        subprocess.Popen(cmd, cwd=target_dir, startupinfo=_visible_startupinfo(), creationflags=flags)
         return True, "Opened in PowerShell Terminal"
     return False, "Terminal launcher requires Windows PowerShell"
 

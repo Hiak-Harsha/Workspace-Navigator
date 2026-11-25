@@ -61,7 +61,7 @@ export function ProjectCard({
   onDelete,
   onCopyPath,
 }) {
-  const codeTarget = item.git_info?.path || item.path;
+  const actionTarget = item.path;
   const isList = viewMode === 'list';
 
   return (
@@ -154,9 +154,9 @@ export function ProjectCard({
 
         <div className="grid grid-cols-4 gap-1.5">
           <CardActionBtn icon={Eye} label="Preview" onClick={() => onPreview(item.path)} />
-          <CardActionBtn icon={FolderOpen} label="Files" onClick={() => onOpenAction('explorer', item.path)} />
-          <CardActionBtn icon={Code2} label="Code" onClick={() => onOpenAction('vscode', codeTarget)} />
-          <CardActionBtn icon={Terminal} label="Term" onClick={() => onOpenAction('terminal', codeTarget)} />
+          <CardActionBtn icon={FolderOpen} label="Files" onClick={() => onOpenAction('explorer', actionTarget)} />
+          <CardActionBtn icon={Code2} label="Code" onClick={() => onOpenAction('vscode', actionTarget)} />
+          <CardActionBtn icon={Terminal} label="Term" onClick={() => onOpenAction('terminal', actionTarget)} />
         </div>
       </div>
     </article>
