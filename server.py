@@ -638,7 +638,9 @@ def open_in_terminal(target_path: str) -> tuple[bool, str]:
 
 class NavigatorHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, directory=str(NAVIGATOR_DIR), **kwargs)
+        dist_dir = NAVIGATOR_DIR / "frontend" / "dist"
+        serve_dir = dist_dir if (dist_dir / "index.html").is_file() else NAVIGATOR_DIR
+        super().__init__(*args, directory=str(serve_dir), **kwargs)
 
     def log_message(self, format: str, *args: Any) -> None:
         try:

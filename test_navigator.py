@@ -187,9 +187,12 @@ class TestNavigatorUniversal(unittest.TestCase):
                     return resp.status, resp.read().decode("utf-8")
 
             try:
-                for static_path in ("/", "/styles.css", "/app.js", "/favicon.ico"):
-                    st, _ = _req(static_path)
-                    self.assertEqual(st, 200)
+                st, html_raw = _req("/")
+                self.assertEqual(st, 200)
+                if (NAV_DIR / "frontend" / "dist" / "index.html").is_file():
+                    self.assertIn('id="root"', html_raw)
+                st_fav, _ = _req("/favicon.ico")
+                self.assertEqual(st_fav, 200)
 
                 st, raw = _req("/api/projects?refresh=1")
                 self.assertEqual(st, 200)

@@ -9,3 +9,4 @@ PROGRESS.md
 .venv/
 venv/
 .pytest_cache/
+frontend/node_modules/
