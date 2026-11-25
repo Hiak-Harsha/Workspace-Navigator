@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="obsidian-cyan">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Workspace Navigator</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Top Command Header -->
+    <header class="app-header">
+      <div class="header-brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
+        </div>
+        <div class="brand-copy">
+          <h1>Workspace Navigator</h1>
+          <button id="workspaceLocationBtn" class="workspace-path-pill" title="Open Workspace root in File Explorer">
+            <span id="workspaceLocation">Resolving workspace...</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="header-search">
+        <div class="search-box">
+          <svg class="search-svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" id="searchInput" placeholder="Search projects, categories, paths..." autocomplete="off">
+          <button id="clearSearch" class="clear-btn" title="Clear search" aria-label="Clear search">✕</button>
+          <kbd class="search-kbd">Ctrl K</kbd>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button id="organizerPill" class="status-pill" title="Toggle Desktop Auto-Organizer">
+          <span class="status-dot"></span>
+          <span id="organizerText">Auto-Organizer: PAUSED</span>
+        </button>
+
+        <button id="cleanDesktopBtn" class="btn btn-primary" title="Preview & organize loose items on Desktop">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+          <span>Clean Desktop</span>
+        </button>
+
+        <button id="auditDuplicatesBtn" class="btn btn-emerald" title="Audit duplicate files, numbered folders, and junk">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          <span>Redundant Audit</span>
+        </button>
+
+        <div class="theme-picker-wrap" title="Switch Theme">
+          <select id="themeSelect" aria-label="Color Theme">
+            <option value="obsidian-cyan">Obsidian Cyan</option>
+            <option value="emerald-ops">Emerald Ops</option>
+            <option value="amber-forge">Amber Forge</option>
+            <option value="daylight">Daylight Light</option>
+          </select>
+        </div>
+
+        <button id="settingsBtn" class="btn-icon" title="Workspace & Desktop Settings" aria-label="Settings">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+
+        <button id="refreshBtn" class="btn-icon" title="Force Rescan Workspace" aria-label="Refresh">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <main class="app-main">
+      <!-- KPI Command Strip -->
+      <section class="kpi-strip" aria-label="Workspace Summary">
+        <button class="kpi-card" id="kpiAll" title="Show all indexed items">
+          <span class="kpi-label">Indexed Items</span>
+          <span class="kpi-value" id="statTotal">--</span>
+          <span class="kpi-sub" id="statCategories">-- categories</span>
+        </button>
+        <button class="kpi-card" id="kpiGit" title="Filter Git repositories">
+          <span class="kpi-label">Git Repositories</span>
+          <span class="kpi-value kpi-emerald" id="statGit">--</span>
+          <span class="kpi-sub">Top-level &amp; nested</span>
+        </button>
+        <button class="kpi-card" id="kpiUnpushed" title="Filter repos with unpushed commits, dirty files, or no remote">
+          <span class="kpi-label">Needs Attention</span>
+          <span class="kpi-value kpi-amber" id="statUnpushed">--</span>
+          <span class="kpi-sub">Unpushed / no remote / dirty</span>
+        </button>
+        <button class="kpi-card" id="kpiAudit" title="Open Redundant & Duplicate Audit">
+          <span class="kpi-label">Duplicate Policy</span>
+          <span class="kpi-value kpi-accent" id="statPolicy">RECYCLE</span>
+          <span class="kpi-sub" id="statDesktop">Desktop synced</span>
+        </button>
+      </section>
+
+      <!-- Category Tabs -->
+      <nav class="category-nav" id="categoryNav" aria-label="Categories"></nav>
+
+      <!-- Controls Bar -->
+      <div class="controls-bar">
+        <div class="controls-left">
+          <span class="results-count" id="resultsCount">Showing all items</span>
+        </div>
+        <div class="controls-right">
+          <div class="view-toggle" role="group" aria-label="View mode">
+            <button id="viewGridBtn" class="view-btn active" title="Card Grid View" aria-label="Grid View">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+            </button>
+            <button id="viewListBtn" class="view-btn" title="Compact List View" aria-label="List View">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            </button>
+          </div>
+          <div class="filter-group">
+            <label for="filterType">Filter</label>
+            <select id="filterType">
+              <option value="all">All Items</option>
+              <option value="git">Git Repos Only</option>
+              <option value="unpushed">Needs Attention (Git)</option>
+              <option value="folders">Folders Only</option>
+              <option value="files">Files Only</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label for="sortBy">Sort</label>
+            <select id="sortBy">
+              <option value="name">Name (A–Z)</option>
+              <option value="category">Category</option>
+              <option value="date">Recently Modified</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Items Grid / List -->
+      <section class="cards-grid" id="cardsGrid">
+        <div class="loading-state">
+          <div class="spinner"></div>
+          <p>Scanning projects and materials...</p>
+        </div>
+      </section>
+    </main>
+
+    <!-- Slide-Over Quick Preview Drawer -->
+    <aside id="previewDrawer" class="drawer-backdrop" aria-hidden="true">
+      <div class="drawer-panel">
+        <div class="drawer-header">
+          <div>
+            <span class="drawer-eyebrow" id="previewTypeLabel">ITEM PREVIEW</span>
+            <h2 id="previewTitle">Loading...</h2>
+            <p id="previewPath" class="drawer-path"></p>
+          </div>
+          <button id="previewCloseBtn" class="btn-icon" title="Close Preview">✕</button>
+        </div>
+        <div class="drawer-actions" id="previewActions"></div>
+        <div class="drawer-body" id="previewBody"></div>
+      </div>
+    </aside>
+
+    <!-- Clean Desktop Preview Modal -->
+    <div id="cleanModal" class="modal-backdrop">
+      <div class="modal-box modal-wide">
+        <div class="modal-header-row">
+          <div>
+            <h3>Clean Desktop Preview</h3>
+            <p id="cleanSummary" class="modal-subtext">Checking Desktop items...</p>
+          </div>
+          <button id="cleanCloseBtn" class="btn-icon" title="Close">✕</button>
+        </div>
+        <div id="cleanResultsBody" class="audit-results-body"></div>
+        <div class="modal-actions">
+          <button id="cleanCancelBtn" class="btn">Cancel</button>
+          <button id="cleanExecuteBtn" class="btn btn-primary">Confirm &amp; Organize</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Delete Confirmation Modal Dialog -->
+    <div id="confirmModal" class="modal-backdrop">
+      <div class="modal-box modal-small">
+        <div class="modal-icon-badge danger">🗑️</div>
+        <h3 id="modalTitle">Delete Item?</h3>
+        <p id="modalMessage">Are you sure you want to delete this item? It will be safely moved to your Windows Recycle Bin.</p>
+        <div class="modal-actions">
+          <button id="modalCancelBtn" class="btn">Cancel</button>
+          <button id="modalConfirmBtn" class="btn btn-danger">Move to Recycle Bin</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Redundant & Duplicate Files Audit Modal -->
+    <div id="auditModal" class="modal-backdrop">
+      <div class="modal-box modal-wide">
+        <div class="modal-header-row">
+          <div>
+            <h3>Redundant &amp; Duplicate File Audit</h3>
+            <p id="auditSummary" class="modal-subtext">Scanning workspace for duplicates, numbered copies, and temp artifacts...</p>
+          </div>
+          <button id="auditCloseBtn" class="btn-icon" title="Close">✕</button>
+        </div>
+
+        <div class="audit-toolbar">
+          <label class="checkbox-inline">
+            <input type="checkbox" id="auditIncludeDesktop">
+            <span>Include Desktop items in scan</span>
+          </label>
+          <div class="audit-toolbar-actions">
+            <button id="auditRescanBtn" class="btn">Rescan</button>
+            <button id="auditSelectSafeBtn" class="btn">Select Safe Redundant</button>
+            <button id="auditCleanupBtn" class="btn btn-danger" disabled>Recycle Selected (0)</button>
+          </div>
+        </div>
+
+        <div id="auditResultsBody" class="audit-results-body">
+          <div class="loading-state"><div class="spinner"></div><p>Analyzing hashes and folder structures...</p></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Universal Settings Modal -->
+    <div id="settingsModal" class="modal-backdrop">
+      <div class="modal-box modal-medium">
+        <div class="modal-header-row">
+          <div>
+            <h3>Universal Workspace Settings</h3>
+            <p class="modal-subtext">Configure paths and duplicate handling for this machine.</p>
+          </div>
+          <button id="settingsCloseBtn" class="btn-icon" title="Close">✕</button>
+        </div>
+
+        <form id="settingsForm" class="settings-form">
+          <label class="field-group">
+            <span>Workspace Directory</span>
+            <input type="text" id="cfgWorkspaceDir" required>
+          </label>
+          <label class="field-group">
+            <span>Desktop Directory (Auto-detected including OneDrive)</span>
+            <input type="text" id="cfgDesktopDir" required>
+          </label>
+          <div class="field-row">
+            <label class="field-group">
+              <span>Duplicate Collision Policy</span>
+              <select id="cfgDupPolicy">
+                <option value="recycle">Recycle exact duplicates (Recommended)</option>
+                <option value="skip">Skip exact duplicates on Desktop</option>
+                <option value="rename">Keep &amp; rename with (1)</option>
+              </select>
+            </label>
+            <label class="field-group">
+              <span>Settle Delay (seconds)</span>
+              <input type="number" id="cfgMinAge" min="0" max="3600" value="20">
+            </label>
+          </div>
+          <div class="modal-actions">
+            <button type="button" id="settingsCancelBtn" class="btn">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save &amp; Initialize Folders</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Floating Toast Notification -->
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+*.log
+organizer_config.json
+favorites.json
+migration_manifest.json
+PROGRESS.md
+.venv/
+venv/
+.pytest_cache/
