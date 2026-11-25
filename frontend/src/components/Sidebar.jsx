@@ -2,14 +2,12 @@ import React from 'react';
 import {
   Archive,
   FolderGit2,
-  FolderKanban,
   Layers,
   Moon,
+  PanelLeftClose,
   Settings,
-  ShieldAlert,
   Star,
   Sun,
-  Zap,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -27,6 +25,7 @@ export function Sidebar({
   onOpenQuarantine,
   onOpenSettings,
   onOpenWorkspaceRoot,
+  onCollapse,
 }) {
   const isAll = activeCategory === 'all' && filterType === 'all';
   const isPinned = activeCategory === 'favorites';
@@ -58,6 +57,17 @@ export function Sidebar({
             {workspacePath || 'Resolving...'}
           </button>
         </div>
+        {onCollapse && (
+          <button
+            type="button"
+            onClick={onCollapse}
+            title="Close sidebar"
+            aria-label="Close sidebar"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border bg-[var(--surface-elevated)] text-[var(--ink-muted)] transition hover:border-[var(--border-strong)] hover:text-[var(--ink)] cursor-pointer"
+          >
+            <PanelLeftClose className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       {/* Primary Views */}

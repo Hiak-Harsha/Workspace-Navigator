@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { LayoutGrid, List, Power, RefreshCw, Search, ShieldCheck, Sparkles } from 'lucide-react';
+import { LayoutGrid, List, PanelLeftOpen, Power, RefreshCw, Search, ShieldCheck, Sparkles } from 'lucide-react';
 import { api } from './lib/api';
 import { cn, naturalCompare } from './lib/utils';
 import { Sidebar } from './components/Sidebar';
@@ -42,6 +42,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState(() => localStorage.getItem('wn_view_mode') || 'grid');
   const [theme, setTheme] = useState(() => localStorage.getItem('wn_theme_v2') || 'light');
+  const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem('wn_sidebar_open') !== 'false');
 
   const [previewPath, setPreviewPath] = useState(null);
   const [cleanOpen, setCleanOpen] = useState(false);
@@ -64,6 +65,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('wn_view_mode', viewMode);
   }, [viewMode]);
+
+  useEffect(() => {
+    localStorage.setItem('wn_sidebar_open', String(sidebarOpen));
+  }, [sidebarOpen]);
 
   const showToast = (msg, error = false) => {
     setToast({ msg, error, visible: true });
@@ -261,26 +266,40 @@ export default function App() {
 
   return (
     <div className="flex min-h-screen flex-col bg-[var(--canvas)] text-[var(--ink)] lg:flex-row">
-      <Sidebar
-        workspacePath={workspacePath}
-        categories={categories}
-        activeCategory={activeCategory}
-        onSelectCategory={setActiveCategory}
-        filterType={filterType}
-        onSelectFilterType={setFilterType}
-        stats={stats}
-        theme={theme}
-        onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
-        onToggleOrganizer={handleToggleOrganizer}
-        onOpenQuarantine={() => setAuditState({ open: true, tab: 'quarantine' })}
-        onOpenSettings={() => setSettingsOpen(true)}
-        onOpenWorkspaceRoot={() => workspacePath && handleOpenAction('explorer', workspacePath)}
-      />
+      {sidebarOpen && (
+        <Sidebar
+          workspacePath={workspacePath}
+          categories={categories}
+          activeCategory={activeCategory}
+          onSelectCategory={setActiveCategory}
+          filterType={filterType}
+          onSelectFilterType={setFilterType}
+          stats={stats}
+          theme={theme}
+          onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+          onToggleOrganizer={handleToggleOrganizer}
+          onOpenQuarantine={() => setAuditState({ open: true, tab: 'quarantine' })}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenWorkspaceRoot={() => workspacePath && handleOpenAction('explorer', workspacePath)}
+          onCollapse={() => setSidebarOpen(false)}
+        />
+      )}
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Top Command Header */}
         <header className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3 border-b bg-[var(--surface)]/95 px-6 py-3 backdrop-blur-md">
-          <div className="flex min-w-[240px] flex-1 items-center gap-2 max-w-[460px]">
+          <div className="flex min-w-[240px] flex-1 items-center gap-2.5 max-w-[520px]">
+            {!sidebarOpen && (
+              <Button
+                variant="secondary"
+                size="icon"
+                title="Open Sidebar"
+                aria-label="Open Sidebar"
+                onClick={() => setSidebarOpen(true)}
+              >
+                <PanelLeftOpen className="h-4 w-4" />
+              </Button>
+            )}
             <div className="flex min-h-[44px] w-full items-center gap-2.5 rounded-lg border bg-[var(--input-bg)] px-3 focus-within:border-[var(--accent-bright)]">
               <Search className="h-4 w-4 text-[var(--ink-muted)]" />
               <input
