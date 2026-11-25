@@ -298,7 +298,7 @@ class TestNavigatorUniversal(unittest.TestCase):
                 ok, _ = srv.open_in_vscode(str(folder))
                 self.assertTrue(ok)
                 args, kwargs = popen_mock.call_args
-                self.assertEqual(args[0], [r"C:\VSCode\Code.exe", str(folder.resolve())])
+                self.assertEqual(args[0], [r"C:\VSCode\Code.exe", "--new-window", str(folder.resolve())])
                 self.assertIsNotNone(kwargs.get("startupinfo"))
                 self.assertEqual(kwargs["startupinfo"].wShowWindow, 1)
                 self.assertTrue(kwargs["creationflags"] & srv.subprocess.CREATE_NEW_PROCESS_GROUP)
@@ -309,7 +309,7 @@ class TestNavigatorUniversal(unittest.TestCase):
                 ok, _ = srv.open_in_vscode(str(folder))
                 self.assertTrue(ok)
                 args, kwargs = popen_mock.call_args
-                self.assertEqual(args[0], ["cmd.exe", "/c", r"C:\VSCode\bin\code.cmd", str(folder.resolve())])
+                self.assertEqual(args[0], ["cmd.exe", "/c", r"C:\VSCode\bin\code.cmd", "--new-window", str(folder.resolve())])
                 self.assertTrue(kwargs["creationflags"] & srv.subprocess.CREATE_NO_WINDOW)
 
             with mock.patch.object(srv.subprocess, "Popen") as popen_mock:

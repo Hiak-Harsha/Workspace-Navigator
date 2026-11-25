@@ -8,6 +8,7 @@ from ctypes import wintypes
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -632,11 +633,12 @@ def open_in_explorer(target_path: str) -> tuple[bool, str]:
         return False, "Explorer is only available on Windows"
     _allow_foreground_window()
     si = _visible_startupinfo()
+    flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
     if p.is_dir():
-        subprocess.Popen(["explorer.exe", str(p)], startupinfo=si)
+        subprocess.Popen(["explorer.exe", str(p)], startupinfo=si, creationflags=flags)
     else:
         # Pass unquoted /select, with quoted path so paths containing spaces select properly
-        subprocess.Popen(f'explorer.exe /select,"{str(p)}"', startupinfo=si)
+        subprocess.Popen(f'explorer.exe /select,"{str(p)}"', startupinfo=si, creationflags=flags)
     return True, "Opened in File Explorer"
 
 
@@ -653,19 +655,19 @@ def open_in_vscode(target_path: str) -> tuple[bool, str]:
     if os.name == "nt":
         if code_exe.lower().endswith((".cmd", ".bat")):
             subprocess.Popen(
-                ["cmd.exe", "/c", code_exe, target],
+                ["cmd.exe", "/c", code_exe, "--new-window", target],
                 cwd=cwd,
                 creationflags=subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP,
             )
         else:
             subprocess.Popen(
-                [code_exe, target],
+                [code_exe, "--new-window", target],
                 cwd=cwd,
                 startupinfo=si,
                 creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
             )
     else:
-        subprocess.Popen([code_exe, target], cwd=cwd)
+        subprocess.Popen([code_exe, "--new-window", target], cwd=cwd)
     return True, "Opened in VS Code"
 
 
@@ -700,11 +702,14 @@ class NavigatorHandler(SimpleHTTPRequestHandler):
 
     def _send_json(self, status_code: int, payload: Any) -> None:
         raw = json.dumps(payload).encode("utf-8")
-        self.send_response(status_code)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(raw)))
-        self.end_headers()
-        self.wfile.write(raw)
+        try:
+            self.send_response(status_code)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+            pass
 
     def end_headers(self) -> None:
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -778,6 +783,8 @@ class NavigatorHandler(SimpleHTTPRequestHandler):
                         "recent_moves": recent_moves,
                     },
                 )
+            except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+                pass
             except Exception as e:
                 self._send_json(500, {"error": str(e)})
             return
@@ -1086,6 +1093,17 @@ def _warm_caches_background() -> None:
         pass
 
 
+class ExclusiveThreadingHTTPServer(ThreadingHTTPServer):
+    """Prevent multiple server instances from binding to the same port on Windows."""
+
+    allow_reuse_address = False
+
+    def server_bind(self) -> None:
+        if os.name == "nt" and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
 def run_server() -> None:
     with STATE_LOCK:
         ensure_workspace_structure(Path(RUNTIME_CFG["workspace_dir"]), RUNTIME_CFG.get("categories"))
@@ -1093,12 +1111,17 @@ def run_server() -> None:
             save_config(ORGANIZER_CONFIG_FILE, RUNTIME_CFG)
         port = int(RUNTIME_CFG.get("port", 8585))
 
+    try:
+        httpd = ExclusiveThreadingHTTPServer(("127.0.0.1", port), NavigatorHandler)
+    except OSError as e:
+        print(f"Workspace Navigator Server could not bind to http://127.0.0.1:{port} ({e}).")
+        return
+
     organizer_thread = threading.Thread(target=auto_organizer_worker, daemon=True)
     organizer_thread.start()
     threading.Timer(2.0, _warm_caches_background).start()
     print("⚡ Auto-Organizer background watcher active.")
 
-    httpd = ThreadingHTTPServer(("127.0.0.1", port), NavigatorHandler)
     httpd.daemon_threads = True
     print(f"🚀 Workspace Navigator Server running at http://127.0.0.1:{port}")
     try:
