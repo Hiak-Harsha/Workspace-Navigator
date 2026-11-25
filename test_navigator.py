@@ -57,6 +57,24 @@ class TestNavigatorUniversal(unittest.TestCase):
                 ws / "06_Career_Personal" / "Resume" / "John_Doe_Resume.pdf",
             )
 
+            # Content-aware: folder with PDF/PPTX and no code -> Academics & Study
+            study_dir = dt / "Microeconomics_Deck"
+            study_dir.mkdir()
+            (study_dir / "slides.pptx").write_text("ppt", encoding="utf-8")
+            self.assertEqual(
+                core.classify_desktop_item(study_dir, ws).parent.name,
+                "04_Academics_Study",
+            )
+
+            # Content-aware: folder with torch in requirements.txt -> AI & ML
+            ml_dir = dt / "CoolTool"
+            ml_dir.mkdir()
+            (ml_dir / "requirements.txt").write_text("torch>=2.0\nfastapi\n", encoding="utf-8")
+            self.assertEqual(
+                core.classify_desktop_item(ml_dir, ws).parent.name,
+                "02_AI_MachineLearning",
+            )
+
     def test_duplicate_collision_handling_and_redundancy_scan(self):
         with tempfile.TemporaryDirectory() as tmp:
             ws = Path(tmp) / "Workspace"
@@ -203,6 +221,29 @@ class TestNavigatorUniversal(unittest.TestCase):
 
                 st, raw = _req("/api/config")
                 self.assertEqual(json.loads(raw)["workspace_dir"], str(ws))
+
+                # Quarantine -> List -> Restore -> Quarantine -> Purge workflow
+                extra_dup = ws / "00_Archives_Storage" / "Project_Backups" / "dup_copy.txt"
+                extra_dup.write_text("redundant", encoding="utf-8")
+                st, raw = _req("/api/quarantine", "POST", {"paths": [str(extra_dup)], "reason": "Test dup"})
+                q_res = json.loads(raw)
+                self.assertEqual(q_res["moved_count"], 1)
+                self.assertFalse(extra_dup.exists())
+                q_path = q_res["moved"][0]["quarantine_path"]
+
+                st, raw = _req("/api/quarantine")
+                self.assertEqual(json.loads(raw)["count"], 1)
+
+                st, raw = _req("/api/quarantine/restore", "POST", {"paths": [q_path]})
+                self.assertEqual(json.loads(raw)["restored_count"], 1)
+                self.assertTrue(extra_dup.exists())
+
+                st, raw = _req("/api/quarantine", "POST", {"paths": [str(extra_dup)]})
+                q_path2 = json.loads(raw)["moved"][0]["quarantine_path"]
+                st, raw = _req("/api/quarantine/purge", "POST", {"paths": [q_path2]})
+                self.assertEqual(json.loads(raw)["removed_count"], 1)
+                st, raw = _req("/api/quarantine")
+                self.assertEqual(json.loads(raw)["count"], 0)
             finally:
                 httpd.shutdown()
                 httpd.server_close()

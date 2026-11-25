@@ -1,5 +1,6 @@
 // Workspace Navigator Client Logic
 let allItems = [];
+let categoryOrder = [];
 let activeCategory = 'all';
 let searchQuery = '';
 let currentFilterType = 'all';
@@ -8,6 +9,9 @@ let currentViewMode = localStorage.getItem('wn_view_mode') || 'grid';
 let pendingDeletePath = null;
 let pendingDeleteName = null;
 let workspaceRootPath = '';
+let currentAuditTab = 'scan';
+let lastScanReport = null;
+let lastQuarantineData = null;
 
 // DOM Elements
 const searchInput = document.getElementById('searchInput');
@@ -33,6 +37,7 @@ const cleanDesktopBtn = document.getElementById('cleanDesktopBtn');
 const themeSelect = document.getElementById('themeSelect');
 const viewGridBtn = document.getElementById('viewGridBtn');
 const viewListBtn = document.getElementById('viewListBtn');
+const auditBtnText = document.getElementById('auditBtnText');
 
 // KPI Cards
 const kpiAll = document.getElementById('kpiAll');
@@ -64,15 +69,25 @@ const modalMessage = document.getElementById('modalMessage');
 const modalCancelBtn = document.getElementById('modalCancelBtn');
 const modalConfirmBtn = document.getElementById('modalConfirmBtn');
 
-// Audit Modal
+// Audit & Quarantine Modal
 const auditDuplicatesBtn = document.getElementById('auditDuplicatesBtn');
 const auditModal = document.getElementById('auditModal');
 const auditCloseBtn = document.getElementById('auditCloseBtn');
 const auditSummary = document.getElementById('auditSummary');
+const tabAuditScan = document.getElementById('tabAuditScan');
+const tabAuditQuarantine = document.getElementById('tabAuditQuarantine');
+const quarantineTabCount = document.getElementById('quarantineTabCount');
+const auditScanControls = document.getElementById('auditScanControls');
+const auditQuarantineControls = document.getElementById('auditQuarantineControls');
+const quarantinePathLabel = document.getElementById('quarantinePathLabel');
 const auditIncludeDesktop = document.getElementById('auditIncludeDesktop');
 const auditRescanBtn = document.getElementById('auditRescanBtn');
 const auditSelectSafeBtn = document.getElementById('auditSelectSafeBtn');
+const auditQuarantineBtn = document.getElementById('auditQuarantineBtn');
 const auditCleanupBtn = document.getElementById('auditCleanupBtn');
+const qRestoreBtn = document.getElementById('qRestoreBtn');
+const qPurgeSelectedBtn = document.getElementById('qPurgeSelectedBtn');
+const qPurgeAllBtn = document.getElementById('qPurgeAllBtn');
 const auditResultsBody = document.getElementById('auditResultsBody');
 
 // Settings Modal
@@ -128,11 +143,20 @@ function formatBytes(bytes) {
   return `${val.toFixed(idx === 0 ? 0 : 1)} ${units[idx]}`;
 }
 
+function naturalCompare(a, b) {
+  return String(a || '').localeCompare(String(b || ''), undefined, { numeric: true, sensitivity: 'base' });
+}
+
+function categoryRank(catName) {
+  const idx = categoryOrder.indexOf(catName);
+  return idx === -1 ? 999 : idx;
+}
+
 async function fetchData(forceRefresh = false) {
   cardsGrid.innerHTML = `
     <div class="loading-state">
       <div class="spinner"></div>
-      <p>Scanning workspace projects...</p>
+      <p>Scanning workspace &amp; external project roots...</p>
     </div>
   `;
 
@@ -141,6 +165,7 @@ async function fetchData(forceRefresh = false) {
     if (!res.ok) throw new Error('Failed to load data');
     const data = await res.json();
     allItems = data.items || [];
+    categoryOrder = data.category_order || [];
     workspaceRootPath = data.workspace_path || '';
 
     statTotal.textContent = data.stats.total ?? allItems.length;
@@ -150,6 +175,10 @@ async function fetchData(forceRefresh = false) {
     statUnpushed.textContent = attentionCount;
     statPolicy.textContent = String(data.stats.duplicate_policy || 'recycle').toUpperCase();
     statDesktop.textContent = data.desktop_path || 'Desktop auto-detected';
+
+    const qCount = data.stats.quarantine_count || 0;
+    quarantineTabCount.textContent = qCount;
+    auditBtnText.textContent = qCount > 0 ? `Redundant (${qCount})` : 'Redundant Audit';
 
     if (workspaceRootPath) {
       workspaceLocation.textContent = workspaceRootPath;
@@ -191,10 +220,15 @@ function renderCategories() {
     if (item.is_favorite) favoriteCount++;
   });
 
+  const sortedCatNames = Object.keys(categoryCounts).sort((a, b) => {
+    const r = categoryRank(a) - categoryRank(b);
+    return r !== 0 ? r : naturalCompare(a, b);
+  });
+
   const categories = [
     { id: 'all', name: 'All Items', icon: '◆', count: allItems.length },
     { id: 'favorites', name: 'Pinned', icon: '★', count: favoriteCount },
-    ...Object.keys(categoryCounts).map(cat => ({
+    ...sortedCatNames.map(cat => ({
       id: cat,
       name: cat,
       icon: allItems.find(i => i.category === cat)?.category_icon || '📁',
@@ -225,6 +259,15 @@ function isUnpushedOrLocalGit(item) {
   return !item.git_info.has_remote || (item.git_info.unpushed_count || 0) > 0 || (item.git_info.dirty_count || 0) > 0;
 }
 
+function gitAttentionScore(item) {
+  if (!item.is_git || !item.git_info) return 3;
+  const g = item.git_info;
+  if (!g.has_remote) return 0;
+  if ((g.unpushed_count || 0) > 0) return 0;
+  if ((g.dirty_count || 0) > 0) return 1;
+  return 2;
+}
+
 function applyFilterAndSort() {
   let filtered = [...allItems];
 
@@ -249,14 +292,25 @@ function applyFilterAndSort() {
     filtered = filtered.filter(i =>
       i.name.toLowerCase().includes(q) ||
       i.category.toLowerCase().includes(q) ||
-      i.path.toLowerCase().includes(q)
+      i.path.toLowerCase().includes(q) ||
+      (i.git_info?.branch || '').toLowerCase().includes(q)
     );
   }
 
   if (currentSortBy === 'name') {
-    filtered.sort((a, b) => a.name.localeCompare(b.name));
+    filtered.sort((a, b) => naturalCompare(a.name, b.name));
   } else if (currentSortBy === 'category') {
-    filtered.sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
+    filtered.sort((a, b) => {
+      const r = categoryRank(a.category) - categoryRank(b.category);
+      if (r !== 0) return r;
+      const c = naturalCompare(a.category, b.category);
+      return c !== 0 ? c : naturalCompare(a.name, b.name);
+    });
+  } else if (currentSortBy === 'git_attention') {
+    filtered.sort((a, b) => {
+      const s = gitAttentionScore(a) - gitAttentionScore(b);
+      return s !== 0 ? s : naturalCompare(a.name, b.name);
+    });
   } else if (currentSortBy === 'date') {
     filtered.sort((a, b) => b.last_modified.localeCompare(a.last_modified));
   }
@@ -302,50 +356,53 @@ function renderCards(items) {
     return;
   }
 
-  cardsGrid.innerHTML = items.map(item => `
-    <article class="project-card" data-id="${escapeHtml(item.id)}" data-path="${escapeHtml(item.path)}">
-      <div class="card-head-block">
-        <div class="card-top">
-          <span class="card-cat-badge">
-            <span>${item.category_icon}</span>
-            <span>${escapeHtml(item.category)}</span>
-          </span>
-          <div class="card-top-right">
-            <button class="card-icon-btn card-fav-btn ${item.is_favorite ? 'is-fav' : ''}" data-path="${escapeHtml(item.path)}" data-name="${escapeHtml(item.name)}" title="${item.is_favorite ? 'Unpin' : 'Pin to favorites'}">
-              ${item.is_favorite ? '★' : '☆'}
-            </button>
-            <button class="card-icon-btn del card-delete-btn" data-name="${escapeHtml(item.name)}" data-path="${escapeHtml(item.path)}" title="Delete to Windows Recycle Bin">
-              ✕
-            </button>
+  cardsGrid.innerHTML = items.map(item => {
+    const codeTarget = item.git_info?.path || item.path;
+    return `
+      <article class="project-card" data-id="${escapeHtml(item.id)}" data-path="${escapeHtml(item.path)}">
+        <div class="card-head-block">
+          <div class="card-top">
+            <span class="card-cat-badge">
+              <span>${item.category_icon}</span>
+              <span>${escapeHtml(item.category)}</span>
+            </span>
+            <div class="card-top-right">
+              <button class="card-icon-btn card-fav-btn ${item.is_favorite ? 'is-fav' : ''}" data-path="${escapeHtml(item.path)}" data-name="${escapeHtml(item.name)}" title="${item.is_favorite ? 'Unpin' : 'Pin to favorites'}">
+                ${item.is_favorite ? '★' : '☆'}
+              </button>
+              <button class="card-icon-btn del card-delete-btn" data-name="${escapeHtml(item.name)}" data-path="${escapeHtml(item.path)}" title="Delete to Windows Recycle Bin">
+                ✕
+              </button>
+            </div>
+          </div>
+
+          <div class="card-title-row">
+            <span class="type-icon">${getTypeSvg(item.is_dir)}</span>
+            <h3 class="card-title" data-preview="${escapeHtml(item.path)}" title="Click to browse & preview">${escapeHtml(item.name)}</h3>
+            ${renderGitBadge(item)}
+          </div>
+
+          <div class="card-path" data-copy="${escapeHtml(item.path)}" title="Click to copy path: ${escapeHtml(item.path)}">
+            ${escapeHtml(item.path)}
           </div>
         </div>
 
-        <div class="card-title-row">
-          <span class="type-icon">${getTypeSvg(item.is_dir)}</span>
-          <h3 class="card-title" data-preview="${escapeHtml(item.path)}" title="Click to preview">${escapeHtml(item.name)}</h3>
-          ${renderGitBadge(item)}
-        </div>
+        <div class="card-foot-block">
+          <div class="card-meta">
+            <span>${escapeHtml(item.last_modified)}</span>
+            <span>${item.is_dir ? 'Directory' : escapeHtml(item.extension.toUpperCase() + (item.size_bytes ? ` · ${formatBytes(item.size_bytes)}` : ''))}</span>
+          </div>
 
-        <div class="card-path" data-copy="${escapeHtml(item.path)}" title="Click to copy path: ${escapeHtml(item.path)}">
-          ${escapeHtml(item.path)}
+          <div class="card-actions">
+            <button class="btn btn-card btn-preview" data-preview="${escapeHtml(item.path)}" title="Browse folder / README preview">Preview</button>
+            <button class="btn btn-card" data-action="explorer" data-path="${escapeHtml(item.path)}" title="Open in File Explorer">Explorer</button>
+            <button class="btn btn-card" data-action="vscode" data-path="${escapeHtml(codeTarget)}" title="Open in VS Code (${escapeHtml(codeTarget)})">VS Code</button>
+            <button class="btn btn-card" data-action="terminal" data-path="${escapeHtml(codeTarget)}" title="Open PowerShell Terminal">Terminal</button>
+          </div>
         </div>
-      </div>
-
-      <div class="card-foot-block">
-        <div class="card-meta">
-          <span>${escapeHtml(item.last_modified)}</span>
-          <span>${item.is_dir ? 'Directory' : escapeHtml(item.extension.toUpperCase() + (item.size_bytes ? ` · ${formatBytes(item.size_bytes)}` : ''))}</span>
-        </div>
-
-        <div class="card-actions">
-          <button class="btn btn-card btn-preview" data-preview="${escapeHtml(item.path)}" title="Quick Preview">Preview</button>
-          <button class="btn btn-card" data-action="explorer" data-path="${escapeHtml(item.path)}" title="Open in File Explorer">Explorer</button>
-          <button class="btn btn-card" data-action="vscode" data-path="${escapeHtml(item.path)}" title="Open in VS Code">VS Code</button>
-          <button class="btn btn-card" data-action="terminal" data-path="${escapeHtml(item.path)}" title="Open PowerShell Terminal">Terminal</button>
-        </div>
-      </div>
-    </article>
-  `).join('');
+      </article>
+    `;
+  }).join('');
 
   cardsGrid.querySelectorAll('[data-preview]').forEach(el => {
     el.addEventListener('click', (e) => {
@@ -387,7 +444,7 @@ function renderCards(items) {
   });
 }
 
-// --- Quick Preview Drawer ---
+// --- Quick Preview Drawer with Subfolder Drill-Down ---
 async function openPreviewDrawer(targetPath) {
   previewDrawer.classList.add('show');
   previewDrawer.setAttribute('aria-hidden', 'false');
@@ -408,14 +465,22 @@ async function openPreviewDrawer(targetPath) {
     previewTitle.textContent = data.name;
     previewPath.textContent = data.path;
 
+    const repoTarget = data.git_info?.path || data.path;
     previewActions.innerHTML = `
-      <button class="btn btn-primary" data-daction="explorer">Open in Explorer</button>
-      <button class="btn" data-daction="vscode">Open in VS Code</button>
-      <button class="btn" data-daction="terminal">Open Terminal</button>
-      ${data.kind === 'file' ? '<button class="btn" data-daction="default">Open Default App</button>' : ''}
+      ${data.parent_path ? `<button class="btn" id="drawerUpBtn" title="Navigate up to parent folder">↑ Up</button>` : ''}
+      <button class="btn btn-primary" data-daction="explorer" data-tpath="${escapeHtml(data.path)}">Open Explorer</button>
+      <button class="btn" data-daction="vscode" data-tpath="${escapeHtml(repoTarget)}">Open VS Code</button>
+      <button class="btn" data-daction="terminal" data-tpath="${escapeHtml(repoTarget)}">Terminal</button>
+      ${data.kind === 'file' ? `<button class="btn" data-daction="default" data-tpath="${escapeHtml(data.path)}">Default App</button>` : ''}
     `;
+
+    const upBtn = document.getElementById('drawerUpBtn');
+    if (upBtn && data.parent_path) {
+      upBtn.addEventListener('click', () => openPreviewDrawer(data.parent_path));
+    }
+
     previewActions.querySelectorAll('[data-daction]').forEach(b => {
-      b.addEventListener('click', () => triggerAction(b.dataset.daction, data.path, b));
+      b.addEventListener('click', () => triggerAction(b.dataset.daction, b.dataset.tpath, b));
     });
 
     let bodyHtml = '';
@@ -424,7 +489,8 @@ async function openPreviewDrawer(targetPath) {
       bodyHtml += `
         <div class="preview-block">
           <h4>Git Repository Status</h4>
-          <div class="preview-code">Branch: ${escapeHtml(g.branch || 'unknown')}
+          <div class="preview-code">Root: ${escapeHtml(g.path)}
+Branch: ${escapeHtml(g.branch || 'unknown')}
 Remote: ${escapeHtml(g.remote_url || 'None (not pushed to GitHub)')}
 Dirty files: ${g.dirty_count} | Unpushed commits: ${g.unpushed_count}</div>
         </div>
@@ -435,10 +501,10 @@ Dirty files: ${g.dirty_count} | Unpushed commits: ${g.unpushed_count}</div>
       const entries = data.entries || [];
       bodyHtml += `
         <div class="preview-block">
-          <h4>Contents (${entries.length}${entries.length >= 60 ? '+' : ''} items)</h4>
+          <h4>Contents — click any item to navigate (${entries.length}${entries.length >= 80 ? '+' : ''} items)</h4>
           <div class="entry-list">
             ${entries.map(e => `
-              <div class="entry-item">
+              <div class="entry-item clickable" data-drill="${escapeHtml(e.path)}" title="Open ${escapeHtml(e.name)}">
                 <span>${e.is_dir ? '📁' : '📄'} ${escapeHtml(e.name)}</span>
                 <span>${e.is_dir ? 'DIR' : formatBytes(e.size)}</span>
               </div>
@@ -473,6 +539,9 @@ Extension: ${escapeHtml(data.extension || 'none')}</div>
       }
     }
     previewBody.innerHTML = bodyHtml;
+    previewBody.querySelectorAll('[data-drill]').forEach(el => {
+      el.addEventListener('click', () => openPreviewDrawer(el.dataset.drill));
+    });
   } catch (err) {
     previewBody.innerHTML = `<div class="empty-state"><p style="color:var(--rose);">Failed to load preview.</p></div>`;
   }
@@ -517,7 +586,7 @@ async function triggerAction(action, path, btnEl = null) {
       setTimeout(() => {
         btnEl.innerHTML = originalHtml;
         btnEl.disabled = false;
-      }, 1300);
+      }, 1200);
     }
   }
 }
@@ -676,19 +745,48 @@ async function toggleAutoOrganizer() {
   }
 }
 
-// --- Redundant & Duplicate Audit ---
+// --- Redundant & Quarantine Audit ---
+function switchAuditTab(tab) {
+  currentAuditTab = tab === 'quarantine' ? 'quarantine' : 'scan';
+  tabAuditScan.classList.toggle('active', currentAuditTab === 'scan');
+  tabAuditQuarantine.classList.toggle('active', currentAuditTab === 'quarantine');
+  auditScanControls.style.display = currentAuditTab === 'scan' ? 'flex' : 'none';
+  auditQuarantineControls.style.display = currentAuditTab === 'quarantine' ? 'flex' : 'none';
+
+  if (currentAuditTab === 'scan') {
+    if (lastScanReport) renderAuditReport(lastScanReport);
+    else openAuditModal(false);
+  } else {
+    loadQuarantineTab();
+  }
+}
+
 async function openAuditModal(forceRefresh = false) {
   auditModal.classList.add('show');
+  if (currentAuditTab === 'quarantine' && !forceRefresh) {
+    await loadQuarantineTab();
+    return;
+  }
+  currentAuditTab = 'scan';
+  tabAuditScan.classList.add('active');
+  tabAuditQuarantine.classList.remove('active');
+  auditScanControls.style.display = 'flex';
+  auditQuarantineControls.style.display = 'none';
+
   auditResultsBody.innerHTML = `<div class="loading-state"><div class="spinner"></div><p>Scanning SHA-256 hashes and numbered copies...</p></div>`;
-  auditCleanupBtn.disabled = true;
-  auditCleanupBtn.textContent = 'Recycle Selected (0)';
+  updateAuditSelectionCount();
 
   try {
     const includeDt = auditIncludeDesktop.checked ? '1' : '0';
     const ref = forceRefresh ? '1' : '0';
-    const res = await fetch(`/api/duplicates?refresh=${ref}&include_desktop=${includeDt}`);
-    const report = await res.json();
-    renderAuditReport(report);
+    const [dupRes, qRes] = await Promise.all([
+      fetch(`/api/duplicates?refresh=${ref}&include_desktop=${includeDt}`),
+      fetch('/api/quarantine')
+    ]);
+    lastScanReport = await dupRes.json();
+    lastQuarantineData = await qRes.json();
+    quarantineTabCount.textContent = lastQuarantineData.count || 0;
+    renderAuditReport(lastScanReport);
   } catch (err) {
     auditResultsBody.innerHTML = `<div class="empty-state"><p style="color:var(--rose);">Failed to run redundancy scan.</p></div>`;
   }
@@ -696,21 +794,30 @@ async function openAuditModal(forceRefresh = false) {
 
 function updateAuditSelectionCount() {
   const checked = auditResultsBody.querySelectorAll('.audit-check:checked');
+  auditQuarantineBtn.textContent = `Move to Quarantine (${checked.length})`;
   auditCleanupBtn.textContent = `Recycle Selected (${checked.length})`;
+  auditQuarantineBtn.disabled = checked.length === 0;
   auditCleanupBtn.disabled = checked.length === 0;
+}
+
+function updateQuarantineSelectionCount() {
+  const checked = auditResultsBody.querySelectorAll('.q-check:checked');
+  qRestoreBtn.disabled = checked.length === 0;
+  qPurgeSelectedBtn.disabled = checked.length === 0;
 }
 
 function renderAuditReport(report) {
   const dupGroups = report.duplicate_groups || [];
+  const intraGroups = report.intra_repo_groups || [];
   const collisions = report.folder_collisions || [];
   const junk = report.junk_items || [];
 
   auditSummary.textContent =
-    `Scanned ${report.scanned_files} files · ${report.redundant_file_count} exact duplicates · ` +
-    `${collisions.length} numbered folders · ${junk.length} junk/empty items · ` +
+    `Scanned ${report.scanned_files} files · ${report.redundant_file_count} safe duplicates · ` +
+    `${collisions.length} numbered folders · ${junk.length} junk/empty · ` +
     `Reclaimable: ${formatBytes(report.reclaimable_bytes)}`;
 
-  if (dupGroups.length === 0 && collisions.length === 0 && junk.length === 0) {
+  if (dupGroups.length === 0 && collisions.length === 0 && junk.length === 0 && intraGroups.length === 0) {
     auditResultsBody.innerHTML = `<div class="empty-state"><p style="font-size:16px;">Workspace is clean — no redundant files detected.</p></div>`;
     return;
   }
@@ -733,7 +840,7 @@ function renderAuditReport(report) {
   }
 
   if (dupGroups.length > 0) {
-    html += `<div class="audit-section"><h4>Exact SHA-256 File Duplicates (${dupGroups.length} groups)</h4>`;
+    html += `<div class="audit-section"><h4>Safe Exact SHA-256 Duplicates (${dupGroups.length} groups)</h4>`;
     html += dupGroups.slice(0, 80).map(g => `
       <div class="audit-group">
         <div class="audit-keep">KEEP (${formatBytes(g.size)}): <code>${escapeHtml(g.keep.path)}</code></div>
@@ -763,10 +870,89 @@ function renderAuditReport(report) {
     html += `</div>`;
   }
 
+  if (intraGroups.length > 0) {
+    html += `<div class="audit-section"><h4>Same-Repo Test / Run Data Copies (${intraGroups.length} groups — excluded from auto-select)</h4>`;
+    html += intraGroups.slice(0, 25).map(g => `
+      <div class="audit-group">
+        <div class="audit-keep">PRIMARY (${formatBytes(g.size)}): <code>${escapeHtml(g.keep.path)}</code></div>
+        ${g.duplicates.slice(0, 4).map(d => `
+          <label class="audit-check-label audit-dup-item">
+            <input type="checkbox" class="audit-check" data-safe="0" value="${escapeHtml(d.path)}">
+            <span>COPY: <code>${escapeHtml(d.path)}</code></span>
+          </label>
+        `).join('')}
+      </div>
+    `).join('');
+    html += `</div>`;
+  }
+
   auditResultsBody.innerHTML = html;
   auditResultsBody.querySelectorAll('.audit-check').forEach(cb => {
     cb.addEventListener('change', updateAuditSelectionCount);
   });
+  updateAuditSelectionCount();
+}
+
+async function loadQuarantineTab() {
+  auditResultsBody.innerHTML = `<div class="loading-state"><div class="spinner"></div><p>Loading Quarantine Vault...</p></div>`;
+  try {
+    const res = await fetch('/api/quarantine');
+    const q = await res.json();
+    lastQuarantineData = q;
+    quarantineTabCount.textContent = q.count || 0;
+    quarantinePathLabel.textContent = `${q.quarantine_dir} (${formatBytes(q.total_bytes)})`;
+    qPurgeAllBtn.disabled = (q.count || 0) === 0;
+
+    if (!q.items || q.items.length === 0) {
+      auditResultsBody.innerHTML = `<div class="empty-state"><p style="font-size:15px;">Quarantine Vault is empty.</p><p style="margin-top:6px;">Select redundant items in Scan Results and click "Move to Quarantine" to place them all in one folder.</p></div>`;
+      updateQuarantineSelectionCount();
+      return;
+    }
+
+    auditResultsBody.innerHTML = `
+      <div class="audit-section">
+        <h4>Items Placed in One Quarantine Folder (${q.items.length} · ${formatBytes(q.total_bytes)})</h4>
+        ${q.items.map(item => `
+          <div class="audit-row">
+            <label class="audit-check-label">
+              <input type="checkbox" class="q-check" value="${escapeHtml(item.quarantine_path)}">
+              <span>${item.is_dir ? '📁' : '📄'} <strong>${escapeHtml(item.name)}</strong></span>
+              <span class="audit-tag tag-safe">${formatBytes(item.size)}</span>
+              ${item.reason ? `<span class="audit-tag tag-warn">${escapeHtml(item.reason)}</span>` : ''}
+            </label>
+            <div class="audit-meta">Original: <code>${escapeHtml(item.original_path || 'Manual')}</code></div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+    auditResultsBody.querySelectorAll('.q-check').forEach(cb => {
+      cb.addEventListener('change', updateQuarantineSelectionCount);
+    });
+    updateQuarantineSelectionCount();
+  } catch (err) {
+    auditResultsBody.innerHTML = `<div class="empty-state"><p style="color:var(--rose);">Failed to load Quarantine Vault.</p></div>`;
+  }
+}
+
+async function moveSelectedToQuarantine() {
+  const paths = Array.from(auditResultsBody.querySelectorAll('.audit-check:checked')).map(cb => cb.value);
+  if (paths.length === 0) return;
+
+  auditQuarantineBtn.disabled = true;
+  auditQuarantineBtn.textContent = 'Moving...';
+  try {
+    const res = await fetch('/api/quarantine', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paths, reason: 'Redundant copy' })
+    });
+    const data = await res.json();
+    showToast(`Moved ${data.moved_count || 0} redundant item(s) to Quarantine Vault`);
+    await openAuditModal(true);
+    fetchData(true);
+  } catch (err) {
+    showToast('Failed to quarantine items', true);
+  }
 }
 
 async function cleanupSelectedDuplicates() {
@@ -788,6 +974,42 @@ async function cleanupSelectedDuplicates() {
   } catch (err) {
     showToast('Cleanup failed', true);
     updateAuditSelectionCount();
+  }
+}
+
+async function restoreQuarantineSelected() {
+  const paths = Array.from(auditResultsBody.querySelectorAll('.q-check:checked')).map(cb => cb.value);
+  if (paths.length === 0) return;
+  try {
+    const res = await fetch('/api/quarantine/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paths })
+    });
+    const data = await res.json();
+    showToast(`Restored ${data.restored_count || 0} item(s)`);
+    await loadQuarantineTab();
+    fetchData(true);
+  } catch (err) {
+    showToast('Restore failed', true);
+  }
+}
+
+async function purgeQuarantineAction(all = false) {
+  const paths = all ? null : Array.from(auditResultsBody.querySelectorAll('.q-check:checked')).map(cb => cb.value);
+  if (!all && (!paths || paths.length === 0)) return;
+  try {
+    const res = await fetch('/api/quarantine/purge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paths })
+    });
+    const data = await res.json();
+    showToast(`Removed ${data.removed_count || 0} item(s) from Quarantine to Recycle Bin`);
+    await loadQuarantineTab();
+    fetchData(true);
+  } catch (err) {
+    showToast('Remove failed', true);
   }
 }
 
@@ -921,6 +1143,8 @@ function setupEventListeners() {
 
   auditDuplicatesBtn.addEventListener('click', () => openAuditModal(false));
   auditCloseBtn.addEventListener('click', () => auditModal.classList.remove('show'));
+  tabAuditScan.addEventListener('click', () => switchAuditTab('scan'));
+  tabAuditQuarantine.addEventListener('click', () => switchAuditTab('quarantine'));
   auditRescanBtn.addEventListener('click', () => openAuditModal(true));
   auditIncludeDesktop.addEventListener('change', () => openAuditModal(true));
   auditSelectSafeBtn.addEventListener('click', () => {
@@ -929,7 +1153,11 @@ function setupEventListeners() {
     });
     updateAuditSelectionCount();
   });
+  auditQuarantineBtn.addEventListener('click', moveSelectedToQuarantine);
   auditCleanupBtn.addEventListener('click', cleanupSelectedDuplicates);
+  qRestoreBtn.addEventListener('click', restoreQuarantineSelected);
+  qPurgeSelectedBtn.addEventListener('click', () => purgeQuarantineAction(false));
+  qPurgeAllBtn.addEventListener('click', () => purgeQuarantineAction(true));
   auditModal.addEventListener('click', (e) => {
     if (e.target === auditModal) auditModal.classList.remove('show');
   });

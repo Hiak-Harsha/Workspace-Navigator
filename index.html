@@ -49,9 +49,9 @@
           <span>Clean Desktop</span>
         </button>
 
-        <button id="auditDuplicatesBtn" class="btn btn-emerald" title="Audit duplicate files, numbered folders, and junk">
+        <button id="auditDuplicatesBtn" class="btn btn-emerald" title="Audit duplicates and manage Quarantine Vault">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-          <span>Redundant Audit</span>
+          <span id="auditBtnText">Redundant Audit</span>
         </button>
 
         <div class="theme-picker-wrap" title="Switch Theme">
@@ -129,7 +129,8 @@
             <label for="sortBy">Sort</label>
             <select id="sortBy">
               <option value="name">Name (A–Z)</option>
-              <option value="category">Category</option>
+              <option value="category">Category + Name</option>
+              <option value="git_attention">Git Attention First</option>
               <option value="date">Recently Modified</option>
             </select>
           </div>
@@ -197,13 +198,18 @@
       <div class="modal-box modal-wide">
         <div class="modal-header-row">
           <div>
-            <h3>Redundant &amp; Duplicate File Audit</h3>
+            <h3>Redundant Files &amp; Quarantine Vault</h3>
             <p id="auditSummary" class="modal-subtext">Scanning workspace for duplicates, numbered copies, and temp artifacts...</p>
           </div>
           <button id="auditCloseBtn" class="btn-icon" title="Close">✕</button>
         </div>
 
-        <div class="audit-toolbar">
+        <div class="modal-tabs">
+          <button id="tabAuditScan" class="modal-tab active">Scan Results</button>
+          <button id="tabAuditQuarantine" class="modal-tab">Quarantine Vault (<span id="quarantineTabCount">0</span>)</button>
+        </div>
+
+        <div id="auditScanControls" class="audit-toolbar">
           <label class="checkbox-inline">
             <input type="checkbox" id="auditIncludeDesktop">
             <span>Include Desktop items in scan</span>
@@ -211,7 +217,17 @@
           <div class="audit-toolbar-actions">
             <button id="auditRescanBtn" class="btn">Rescan</button>
             <button id="auditSelectSafeBtn" class="btn">Select Safe Redundant</button>
+            <button id="auditQuarantineBtn" class="btn btn-primary" disabled>Move to Quarantine (0)</button>
             <button id="auditCleanupBtn" class="btn btn-danger" disabled>Recycle Selected (0)</button>
+          </div>
+        </div>
+
+        <div id="auditQuarantineControls" class="audit-toolbar" style="display:none;">
+          <span id="quarantinePathLabel" class="modal-subtext" style="font-family:var(--font-mono);"></span>
+          <div class="audit-toolbar-actions">
+            <button id="qRestoreBtn" class="btn" disabled>Restore Selected</button>
+            <button id="qPurgeSelectedBtn" class="btn btn-danger" disabled>Remove Selected</button>
+            <button id="qPurgeAllBtn" class="btn btn-danger">Empty Quarantine</button>
           </div>
         </div>
 

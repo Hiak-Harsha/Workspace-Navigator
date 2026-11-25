@@ -39,10 +39,11 @@ if sys.stderr is None:
 if str(NAVIGATOR_DIR) not in sys.path:
     sys.path.insert(0, str(NAVIGATOR_DIR))
 
+from classifier import CODE_MARKERS, IGNORED_FILE_NAMES, TEMP_SUFFIXES
 from navigator_core import (
+    CATEGORY_DISPLAY_ORDER,
     DEFAULT_CATEGORIES,
-    IGNORED_FILE_NAMES,
-    TEMP_SUFFIXES,
+    QUARANTINE_SUBDIR,
     analyze_workspace_redundancy,
     build_item_preview,
     classify_desktop_item,
@@ -51,8 +52,13 @@ from navigator_core import (
     ensure_workspace_structure,
     find_git_repos,
     get_git_summaries_parallel,
+    get_quarantine_dir,
     get_unique_destination,
+    list_quarantine,
     load_config,
+    purge_quarantine,
+    quarantine_items,
+    restore_quarantine_items,
     save_config,
 )
 
@@ -63,10 +69,17 @@ DUPLICATES_CACHE: dict[str, Any] | None = None
 PROJECTS_CACHE: tuple[float, list[dict[str, Any]]] | None = None
 PROJECTS_CACHE_TTL_SECONDS = 15.0
 
+HOME_SKIP_DIRS = {
+    "appdata", "anaconda3", "miniforge3", "node_modules", "onedrive",
+    "searches", "contacts", "favorites", "links", "saved games", "videos",
+    "music", "pictures", "downloads", "documents", "workspace", "desktop",
+    "virtualbox vms", "pycharmprojects", "scikit_learn_data", "open-source",
+}
+
 FAVICON_SVG = (
     b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">'
-    b'<rect width="64" height="64" rx="14" fill="#0d1322"/>'
-    b'<path d="M36 10L16 36h14l-4 18 22-28H34l2-16z" fill="#38bdf8"/>'
+    b'<rect width="64" height="64" rx="14" fill="#090b10"/>'
+    b'<path d="M36 10L16 36h14l-4 18 22-28H34l2-16z" fill="#22d3ee"/>'
     b"</svg>"
 )
 
@@ -83,6 +96,13 @@ def get_desktop_dir() -> Path:
 
 def get_manifest_file() -> Path:
     return get_workspace_dir() / "migration_manifest.json"
+
+
+def invalidate_caches() -> None:
+    global DUPLICATES_CACHE, PROJECTS_CACHE
+    with STATE_LOCK:
+        DUPLICATES_CACHE = None
+        PROJECTS_CACHE = None
 
 
 def normalize_path(p: str) -> str:
@@ -103,6 +123,32 @@ def is_within_managed_roots(target_path: Path) -> bool:
         for root in (get_workspace_dir().resolve(), get_desktop_dir().resolve()):
             if resolved != root and root in resolved.parents:
                 return True
+    except Exception:
+        return False
+    return False
+
+
+def is_within_preview_roots(target_path: Path) -> bool:
+    """Allow safe read-only preview inside Workspace, Desktop, or valid extra project roots."""
+    if is_within_managed_roots(target_path):
+        return True
+    try:
+        resolved = target_path.resolve()
+        with STATE_LOCK:
+            extra_roots = list(RUNTIME_CFG.get("extra_scan_roots", []))
+        for entry in extra_roots:
+            rp = Path(entry.get("path", "")).resolve()
+            if resolved == rp or rp not in resolved.parents:
+                continue
+            mode = entry.get("mode", "project_markers_only")
+            if mode == "project_markers_only":
+                rel = resolved.relative_to(rp)
+                top_dir = rp / rel.parts[0]
+                if top_dir.name.startswith(".") or top_dir.name.lower() in HOME_SKIP_DIRS:
+                    continue
+                if not top_dir.is_dir() or not _has_project_marker(top_dir):
+                    continue
+            return True
     except Exception:
         return False
     return False
@@ -197,24 +243,15 @@ def log_organizer_action(line: str) -> None:
 
 
 def _is_item_settled(item: Path, min_age_seconds: int) -> bool:
-    """Avoid sweeping freshly created folders or in-progress downloads."""
     if min_age_seconds <= 0:
         return True
     try:
-        age = time.time() - item.stat().st_mtime
-        return age >= min_age_seconds
+        return (time.time() - item.stat().st_mtime) >= min_age_seconds
     except OSError:
         return False
 
 
-def _handle_duplicate_collision(
-    src: Path, dest: Path, policy: str
-) -> tuple[str, Path | None]:
-    """
-    Resolve name collisions consistently using content verification:
-    - If identical (or folder subset): apply duplicate_policy ('recycle' | 'skip' | 'rename').
-    - If content genuinely differs: return ('rename', unique_dest).
-    """
+def _handle_duplicate_collision(src: Path, dest: Path, policy: str) -> tuple[str, Path | None]:
     is_redundant = False
     if src.is_file() and dest.is_file():
         try:
@@ -228,18 +265,15 @@ def _handle_duplicate_collision(
 
     if not is_redundant:
         return "move", get_unique_destination(dest)
-
     if policy == "skip":
         return "skip_duplicate", None
     if policy == "rename":
         return "move", get_unique_destination(dest)
-    # Default safe universal policy: 'recycle' redundant exact duplicate
     return "recycle_duplicate", dest
 
 
 def organize_desktop_pass(dry_run: bool = False, respect_age: bool = True) -> list[dict[str, Any]]:
     """Classify and move Desktop items into Workspace with SHA-256 duplicate protection."""
-    global DUPLICATES_CACHE
     with STATE_LOCK:
         desktop_dir = Path(RUNTIME_CFG["desktop_dir"])
         workspace_dir = Path(RUNTIME_CFG["workspace_dir"])
@@ -249,7 +283,6 @@ def organize_desktop_pass(dry_run: bool = False, respect_age: bool = True) -> li
 
     if not desktop_dir.exists():
         return []
-
     if not dry_run:
         ensure_workspace_structure(workspace_dir, categories)
 
@@ -268,8 +301,6 @@ def organize_desktop_pass(dry_run: bool = False, respect_age: bool = True) -> li
             continue
         if not _is_item_settled(item, min_age):
             continue
-
-        # Skip empty folders on Desktop without silently deleting them if user just created one
         if item.is_dir():
             try:
                 if not any(item.iterdir()):
@@ -283,7 +314,6 @@ def organize_desktop_pass(dry_run: bool = False, respect_age: bool = True) -> li
         if dest is None:
             continue
 
-        # Verify file is not write-locked
         if item.is_file():
             try:
                 with open(item, "a"):
@@ -347,7 +377,6 @@ def organize_desktop_pass(dry_run: bool = False, respect_age: bool = True) -> li
 
             target_dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(item), str(target_dest))
-
             if item.exists():
                 continue
 
@@ -370,8 +399,7 @@ def organize_desktop_pass(dry_run: bool = False, respect_age: bool = True) -> li
 
     if manifest_batch and not dry_run:
         append_manifest_entries(manifest_batch)
-        with STATE_LOCK:
-            DUPLICATES_CACHE = None
+        invalidate_caches()
 
     return results
 
@@ -388,15 +416,29 @@ def auto_organizer_worker() -> None:
         time.sleep(5)
 
 
+def _has_project_marker(dir_path: Path) -> bool:
+    if (dir_path / ".git").exists():
+        return True
+    try:
+        for entry in dir_path.iterdir():
+            if entry.is_file() and entry.name.lower() in CODE_MARKERS:
+                return True
+    except OSError:
+        return False
+    return False
+
+
 def get_item_info(
     path: Path,
     category_name: str,
     category_icon: str,
     favorites_set: set[str],
     nested_git_depth: int = 2,
+    source_scope: str = "workspace",
+    check_git: bool = True,
 ) -> tuple[dict[str, Any], Path | None]:
     is_dir = path.is_dir()
-    git_repos = find_git_repos(path, max_depth=nested_git_depth) if is_dir else []
+    git_repos = find_git_repos(path, max_depth=nested_git_depth) if (is_dir and check_git) else []
     primary_repo = git_repos[0] if git_repos else None
 
     try:
@@ -421,6 +463,7 @@ def get_item_info(
             "git_info": None,
             "category": category_name,
             "category_icon": category_icon,
+            "source_scope": source_scope,
             "last_modified": mtime,
             "size_bytes": size_bytes,
             "is_favorite": is_fav,
@@ -428,13 +471,6 @@ def get_item_info(
         },
         primary_repo,
     )
-
-
-def invalidate_caches() -> None:
-    global DUPLICATES_CACHE, PROJECTS_CACHE
-    with STATE_LOCK:
-        DUPLICATES_CACHE = None
-        PROJECTS_CACHE = None
 
 
 def scan_items(force_refresh: bool = False) -> list[dict[str, Any]]:
@@ -447,48 +483,94 @@ def scan_items(force_refresh: bool = False) -> list[dict[str, Any]]:
         workspace_dir = Path(RUNTIME_CFG["workspace_dir"])
         categories = RUNTIME_CFG.get("categories") or DEFAULT_CATEGORIES
         git_depth = int(RUNTIME_CFG.get("scan_nested_git_depth", 2))
+        extra_roots = list(RUNTIME_CFG.get("extra_scan_roots", []))
 
     favorites = set(load_favorites())
     items: list[dict[str, Any]] = []
     repo_links: list[tuple[int, Path]] = []
+    seen_paths: set[str] = set()
 
-    if not workspace_dir.exists():
-        return items
+    def _add_item(p: Path, cat_name: str, cat_icon: str, scope: str, check_git: bool = True) -> None:
+        try:
+            res_key = str(p.resolve()).lower()
+        except OSError:
+            return
+        if res_key in seen_paths:
+            return
+        seen_paths.add(res_key)
+        item_dict, primary_repo = get_item_info(
+            p, cat_name, cat_icon, favorites, git_depth, scope, check_git=check_git
+        )
+        idx = len(items)
+        items.append(item_dict)
+        if primary_repo is not None:
+            repo_links.append((idx, primary_repo))
 
-    for folder_name, meta in categories.items():
-        cat_dir = workspace_dir / folder_name
-        if not cat_dir.is_dir():
+    # 1. Scan structured Workspace categories + sub-collections
+    if workspace_dir.exists():
+        for folder_name, meta in categories.items():
+            cat_dir = workspace_dir / folder_name
+            if not cat_dir.is_dir():
+                continue
+            cat_name = meta.get("label", folder_name)
+            cat_icon = meta.get("icon", "📁")
+            sub_collections = {s.lower() for s in meta.get("sub_collections", [])}
+            is_archive_cat = folder_name == "00_Archives_Storage"
+
+            try:
+                children = list(cat_dir.iterdir())
+            except OSError:
+                continue
+
+            for child in children:
+                if child.name.startswith(".") or child.name == QUARANTINE_SUBDIR:
+                    continue
+                _add_item(child, cat_name, cat_icon, "workspace", check_git=not is_archive_cat)
+                if child.is_dir() and child.name.lower() in sub_collections:
+                    try:
+                        for sub_file in child.iterdir():
+                            if sub_file.name.startswith(".") or sub_file.name == QUARANTINE_SUBDIR:
+                                continue
+                            _add_item(sub_file, cat_name, cat_icon, "workspace", check_git=not is_archive_cat)
+                    except OSError:
+                        continue
+
+        # Also index Navigator itself if inside Workspace
+        if NAVIGATOR_DIR.parent.resolve() == workspace_dir.resolve():
+            _add_item(NAVIGATOR_DIR, "Development", "💻", "workspace")
+
+    # 2. Scan extra project roots (Home repos, ~/open-source, Desktop projects/files)
+    for root_cfg in extra_roots:
+        rp = Path(os.path.expandvars(str(root_cfg.get("path", "")))).expanduser()
+        if not rp.is_dir():
             continue
-        cat_name = meta.get("label", folder_name)
-        cat_icon = meta.get("icon", "📁")
-        sub_collections = {s.lower() for s in meta.get("sub_collections", [])}
+        cat_name = root_cfg.get("category", "External Projects")
+        cat_icon = root_cfg.get("icon", "📁")
+        mode = root_cfg.get("mode", "project_markers_only")
 
         try:
-            children = list(cat_dir.iterdir())
+            entries = list(rp.iterdir())
         except OSError:
             continue
 
-        for child in children:
-            if child.name.startswith("."):
+        for entry in entries:
+            name_l = entry.name.lower()
+            if entry.name.startswith(".") or name_l in IGNORED_FILE_NAMES:
                 continue
-            item_dict, primary_repo = get_item_info(child, cat_name, cat_icon, favorites, git_depth)
-            idx = len(items)
-            items.append(item_dict)
-            if primary_repo is not None:
-                repo_links.append((idx, primary_repo))
-
-            if child.is_dir() and child.name.lower() in sub_collections:
-                try:
-                    for sub_file in child.iterdir():
-                        if sub_file.name.startswith("."):
-                            continue
-                        sub_dict, sub_repo = get_item_info(sub_file, cat_name, cat_icon, favorites, git_depth)
-                        sub_idx = len(items)
-                        items.append(sub_dict)
-                        if sub_repo is not None:
-                            repo_links.append((sub_idx, sub_repo))
-                except OSError:
+            if mode == "project_markers_only":
+                if not entry.is_dir() or name_l in HOME_SKIP_DIRS:
                     continue
+                if not _has_project_marker(entry):
+                    continue
+                _add_item(entry, cat_name, cat_icon, "external")
+            elif mode == "all_dirs":
+                if entry.is_dir():
+                    _add_item(entry, cat_name, cat_icon, "external")
+            elif mode == "projects_and_files":
+                if entry.suffix.lower() in {".lnk", ".url", ".ini"} or entry.suffix.lower() in TEMP_SUFFIXES:
+                    continue
+                if entry.is_dir() or entry.is_file():
+                    _add_item(entry, cat_name, cat_icon, "desktop")
 
     if repo_links:
         summaries = get_git_summaries_parallel([repo for _, repo in repo_links])
@@ -502,7 +584,6 @@ def scan_items(force_refresh: bool = False) -> list[dict[str, Any]]:
 
 
 def find_vscode_exe() -> str | None:
-    """Find Visual Studio Code dynamically across standard Windows/user install locations."""
     env_candidates = [
         Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Microsoft VS Code" / "Code.exe",
         Path(os.environ.get("ProgramFiles", "")) / "Microsoft VS Code" / "Code.exe",
@@ -520,56 +601,15 @@ def find_vscode_exe() -> str | None:
     return None
 
 
-def focus_window_by_hwnd(hwnd: int) -> None:
-    if os.name != "nt":
-        return
-    try:
-        user32 = ctypes.windll.user32
-        user32.SystemParametersInfoW(0x2001, 0, 0, 0x0002 | 0x0001)
-        user32.keybd_event(0x12, 0, 0, 0)
-        user32.ShowWindow(hwnd, 9)
-        user32.BringWindowToTop(hwnd)
-        user32.SetForegroundWindow(hwnd)
-        user32.keybd_event(0x12, 0, 2, 0)
-    except Exception:
-        pass
-
-
 def open_in_explorer(target_path: str) -> tuple[bool, str]:
+    """Deterministically open the exact folder or highlight the exact file in Windows Explorer."""
     p = Path(target_path).resolve()
     if os.name != "nt":
         return False, "Explorer is only available on Windows"
-
-    is_dir = p.is_dir()
-    target_uri = p.as_uri()
-    navigated = False
-
-    try:
-        import pythoncom
-        import win32com.client
-
-        pythoncom.CoInitialize()
-        try:
-            shell = win32com.client.Dispatch("Shell.Application")
-            for w in shell.Windows():
-                try:
-                    if hasattr(w, "HWND") and w.HWND:
-                        w.Navigate(target_uri if is_dir else p.parent.as_uri())
-                        focus_window_by_hwnd(w.HWND)
-                        navigated = True
-                        break
-                except Exception:
-                    pass
-        finally:
-            pythoncom.CoUninitialize()
-    except Exception:
-        pass
-
-    if not navigated:
-        if is_dir:
-            subprocess.Popen(["explorer.exe", str(p)])
-        else:
-            subprocess.Popen(["explorer.exe", f"/select,{str(p)}"])
+    if p.is_dir():
+        subprocess.Popen(["explorer.exe", str(p)])
+    else:
+        subprocess.Popen(["explorer.exe", f"/select,{str(p)}"])
     return True, "Opened in File Explorer"
 
 
@@ -657,15 +697,22 @@ class NavigatorHandler(SimpleHTTPRequestHandler):
                     1
                     for i in items
                     if i.get("git_info")
-                    and (not i["git_info"].get("has_remote") or i["git_info"].get("unpushed_count", 0) > 0)
+                    and (
+                        not i["git_info"].get("has_remote")
+                        or i["git_info"].get("unpushed_count", 0) > 0
+                        or i["git_info"].get("dirty_count", 0) > 0
+                    )
                 )
 
+                q_info = list_quarantine(ws_dir)
                 stats = {
                     "total": len(items),
                     "git_repos": sum(1 for i in items if i["is_git"]),
                     "unpushed_repos": unpushed_count,
                     "categories": len({i["category"] for i in items}),
                     "favorites": sum(1 for i in items if i["is_favorite"]),
+                    "quarantine_count": q_info["count"],
+                    "quarantine_bytes": q_info["total_bytes"],
                     "workspace_ready": ws_dir.exists(),
                     "desktop_ready": dt_dir.exists(),
                     "organizer_enabled": enabled,
@@ -677,6 +724,7 @@ class NavigatorHandler(SimpleHTTPRequestHandler):
                     {
                         "items": items,
                         "stats": stats,
+                        "category_order": CATEGORY_DISPLAY_ORDER,
                         "workspace_path": str(ws_dir),
                         "desktop_path": str(dt_dir),
                         "recent_moves": recent_moves,
@@ -706,6 +754,10 @@ class NavigatorHandler(SimpleHTTPRequestHandler):
             self._send_json(200, report)
             return
 
+        if parsed.path == "/api/quarantine":
+            self._send_json(200, list_quarantine(get_workspace_dir()))
+            return
+
         if parsed.path == "/api/config":
             with STATE_LOCK:
                 cfg_view = {
@@ -714,6 +766,7 @@ class NavigatorHandler(SimpleHTTPRequestHandler):
                     "enabled": bool(RUNTIME_CFG.get("enabled", False)),
                     "duplicate_policy": RUNTIME_CFG.get("duplicate_policy", "recycle"),
                     "min_age_seconds": int(RUNTIME_CFG.get("min_age_seconds", 20)),
+                    "extra_scan_roots": RUNTIME_CFG.get("extra_scan_roots", []),
                 }
             self._send_json(200, cfg_view)
             return
@@ -725,8 +778,8 @@ class NavigatorHandler(SimpleHTTPRequestHandler):
             if not p or not p.exists():
                 self._send_json(404, {"success": False, "error": f"Path not found: {raw_path}"})
                 return
-            if not is_within_managed_roots(p):
-                self._send_json(403, {"success": False, "error": "Preview restricted to managed Workspace/Desktop items"})
+            if not is_within_preview_roots(p):
+                self._send_json(403, {"success": False, "error": "Preview restricted to managed roots"})
                 return
             self._send_json(200, {"success": True, **build_item_preview(p)})
             return
@@ -745,7 +798,6 @@ class NavigatorHandler(SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self) -> None:
-        global DUPLICATES_CACHE
         parsed = urllib.parse.urlparse(self.path)
         content_len = int(self.headers.get("Content-Length", 0))
         post_data = self.rfile.read(content_len).decode("utf-8") if content_len > 0 else "{}"
@@ -758,7 +810,6 @@ class NavigatorHandler(SimpleHTTPRequestHandler):
             action = payload.get("action", "explorer")
             raw_path = payload.get("path", "")
             target_path = normalize_path(raw_path)
-
             if not target_path or not os.path.exists(target_path):
                 self._send_json(404, {"success": False, "error": f"Path not found: {raw_path}"})
                 return
@@ -786,15 +837,12 @@ class NavigatorHandler(SimpleHTTPRequestHandler):
             raw_path = payload.get("path", "")
             target_path = normalize_path(raw_path)
             p = Path(target_path) if target_path else None
-
             if not p or not p.exists():
                 self._send_json(404, {"success": False, "error": f"Path not found: {raw_path}"})
                 return
-
             if not is_within_managed_roots(p):
                 self._send_json(403, {"success": False, "error": "Refusing to delete path outside Workspace/Desktop"})
                 return
-
             try:
                 send_to_recycle_bin(str(p))
                 log_organizer_action(f"DELETED (Recycle Bin): {p}")
@@ -809,7 +857,6 @@ class NavigatorHandler(SimpleHTTPRequestHandler):
             if not isinstance(raw_paths, list):
                 self._send_json(400, {"success": False, "error": "paths must be a list"})
                 return
-
             removed: list[str] = []
             errors: list[dict[str, str]] = []
             for raw_p in raw_paths:
@@ -826,17 +873,63 @@ class NavigatorHandler(SimpleHTTPRequestHandler):
                     removed.append(str(p))
                 except Exception as exc:
                     errors.append({"path": str(p), "error": str(exc)})
-
             invalidate_caches()
             self._send_json(
                 200,
-                {
-                    "success": len(errors) == 0,
-                    "removed_count": len(removed),
-                    "removed": removed,
-                    "errors": errors,
-                },
+                {"success": len(errors) == 0, "removed_count": len(removed), "removed": removed, "errors": errors},
             )
+            return
+
+        if parsed.path == "/api/quarantine":
+            raw_paths = payload.get("paths", [])
+            reason = str(payload.get("reason", "Redundant copy"))
+            if not isinstance(raw_paths, list):
+                self._send_json(400, {"success": False, "error": "paths must be a list"})
+                return
+            valid_paths: list[Path] = []
+            errors: list[dict[str, str]] = []
+            for raw_p in raw_paths:
+                norm_p = normalize_path(str(raw_p))
+                p = Path(norm_p) if norm_p else None
+                if not p or not p.exists():
+                    continue
+                if not is_within_managed_roots(p):
+                    errors.append({"path": norm_p, "error": "Outside managed roots"})
+                    continue
+                valid_paths.append(p)
+            res = quarantine_items(valid_paths, get_workspace_dir(), reason=reason)
+            res["errors"].extend(errors)
+            for m in res["moved"]:
+                log_organizer_action(f"QUARANTINED: {m['original_path']} -> {m['quarantine_path']}")
+            invalidate_caches()
+            self._send_json(200, {"success": len(res["errors"]) == 0, **res})
+            return
+
+        if parsed.path == "/api/quarantine/restore":
+            raw_paths = payload.get("paths", [])
+            if not isinstance(raw_paths, list):
+                self._send_json(400, {"success": False, "error": "paths must be a list"})
+                return
+            q_paths = [Path(normalize_path(str(p))) for p in raw_paths if str(p).strip()]
+            res = restore_quarantine_items(q_paths, get_workspace_dir())
+            for r in res["restored"]:
+                log_organizer_action(f"RESTORED FROM QUARANTINE: {r}")
+            invalidate_caches()
+            self._send_json(200, {"success": len(res["errors"]) == 0, **res})
+            return
+
+        if parsed.path == "/api/quarantine/purge":
+            raw_paths = payload.get("paths")
+            q_paths = (
+                [Path(normalize_path(str(p))) for p in raw_paths if str(p).strip()]
+                if isinstance(raw_paths, list)
+                else None
+            )
+            res = purge_quarantine(q_paths, get_workspace_dir(), send_to_recycle_bin)
+            for r in res["removed"]:
+                log_organizer_action(f"PURGED QUARANTINE (Recycle Bin): {r}")
+            invalidate_caches()
+            self._send_json(200, {"success": len(res["errors"]) == 0, **res})
             return
 
         if parsed.path == "/api/organize-desktop":
@@ -844,12 +937,7 @@ class NavigatorHandler(SimpleHTTPRequestHandler):
             moved = organize_desktop_pass(dry_run=dry_run, respect_age=False)
             self._send_json(
                 200,
-                {
-                    "success": True,
-                    "dry_run": dry_run,
-                    "moved_count": len(moved),
-                    "moved_items": moved,
-                },
+                {"success": True, "dry_run": dry_run, "moved_count": len(moved), "moved_items": moved},
             )
             return
 
@@ -876,12 +964,14 @@ class NavigatorHandler(SimpleHTTPRequestHandler):
                         RUNTIME_CFG["duplicate_policy"] = payload["duplicate_policy"]
                     if "min_age_seconds" in payload:
                         RUNTIME_CFG["min_age_seconds"] = max(0, int(payload["min_age_seconds"]))
+                    if isinstance(payload.get("extra_scan_roots"), list):
+                        RUNTIME_CFG["extra_scan_roots"] = payload["extra_scan_roots"]
 
                     created = ensure_workspace_structure(
                         Path(RUNTIME_CFG["workspace_dir"]), RUNTIME_CFG.get("categories")
                     )
                     save_config(ORGANIZER_CONFIG_FILE, RUNTIME_CFG)
-                    DUPLICATES_CACHE = None
+                    invalidate_caches()
                     snapshot = {
                         "workspace_dir": RUNTIME_CFG["workspace_dir"],
                         "desktop_dir": RUNTIME_CFG["desktop_dir"],
@@ -919,6 +1009,7 @@ class NavigatorHandler(SimpleHTTPRequestHandler):
                     favs.append(item_key)
                 is_fav = True
             save_favorites(favs)
+            invalidate_caches()
             self._send_json(200, {"success": True, "is_favorite": is_fav})
             return
 
@@ -975,7 +1066,16 @@ def main() -> None:
     if args.init:
         created = ensure_workspace_structure(get_workspace_dir(), RUNTIME_CFG.get("categories"))
         save_config(ORGANIZER_CONFIG_FILE, RUNTIME_CFG)
-        print(json.dumps({"workspace_dir": str(get_workspace_dir()), "desktop_dir": str(get_desktop_dir()), "created": created}, indent=2))
+        print(
+            json.dumps(
+                {
+                    "workspace_dir": str(get_workspace_dir()),
+                    "desktop_dir": str(get_desktop_dir()),
+                    "created": created,
+                },
+                indent=2,
+            )
+        )
         return
 
     if args.migrate_dry_run or args.migrate_execute:
@@ -984,7 +1084,9 @@ def main() -> None:
         return
 
     if args.scan_duplicates:
-        report = analyze_workspace_redundancy(get_workspace_dir(), desktop_dir=get_desktop_dir(), include_desktop=True)
+        report = analyze_workspace_redundancy(
+            get_workspace_dir(), desktop_dir=get_desktop_dir(), include_desktop=True
+        )
         print(json.dumps(report, indent=2))
         return
 

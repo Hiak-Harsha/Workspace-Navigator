@@ -936,7 +936,7 @@ body {
 .entry-item {
   font-family: var(--font-mono);
   font-size: 11px;
-  padding: 5px 8px;
+  padding: 6px 9px;
   border-radius: 5px;
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
@@ -944,6 +944,40 @@ body {
   display: flex;
   justify-content: space-between;
   gap: 8px;
+}
+
+.entry-item.clickable {
+  cursor: pointer;
+  transition: border-color 0.14s ease, color 0.14s ease;
+}
+
+.entry-item.clickable:hover {
+  border-color: var(--accent-border);
+  color: var(--accent-bright);
+}
+
+.modal-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.modal-tab {
+  padding: 6px 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: var(--font-sans);
+}
+
+.modal-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
 }
 
 .entry-item span:first-child {
