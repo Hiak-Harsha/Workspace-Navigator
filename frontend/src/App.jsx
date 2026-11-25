@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { LayoutGrid, List, RefreshCw, Search, ShieldCheck, Sparkles } from 'lucide-react';
+import { LayoutGrid, List, Power, RefreshCw, Search, ShieldCheck, Sparkles } from 'lucide-react';
 import { api } from './lib/api';
 import { cn, naturalCompare } from './lib/utils';
 import { Sidebar } from './components/Sidebar';
@@ -11,6 +11,7 @@ import { AuditSheet } from './components/AuditSheet';
 import { SettingsSheet } from './components/SettingsSheet';
 import { CommandPalette } from './components/CommandPalette';
 import { DeleteDialog } from './components/DeleteDialog';
+import { CloseDialog } from './components/CloseDialog';
 import { Button } from './components/ui/Button';
 import { ShimmerButton } from './components/magic/ShimmerButton';
 
@@ -48,6 +49,9 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(null);
+  const [closeDialogOpen, setCloseDialogOpen] = useState(false);
+  const [closingBusy, setClosingBusy] = useState(false);
+  const [closedNotice, setClosedNotice] = useState(null);
   const [toast, setToast] = useState({ msg: '', error: false, visible: false });
 
   useEffect(() => {
@@ -208,6 +212,53 @@ export default function App() {
     navigator.clipboard?.writeText(p).then(() => showToast('Path copied to clipboard')).catch(() => {});
   };
 
+  const handleCloseWindowOnly = () => {
+    setCloseDialogOpen(false);
+    window.close();
+    setClosedNotice('window');
+  };
+
+  const handleStopServerAndClose = async () => {
+    setClosingBusy(true);
+    try {
+      await api.shutdownServer();
+    } catch {
+      // Server may drop connection while shutting down
+    } finally {
+      setClosingBusy(false);
+      setCloseDialogOpen(false);
+      window.close();
+      setClosedNotice('server');
+    }
+  };
+
+  if (closedNotice) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[var(--canvas)] p-6 text-[var(--ink)]">
+        <div className="max-w-md rounded-xl border bg-[var(--surface)] p-8 text-center shadow-xl">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--surface-elevated)] text-[var(--accent-bright)]">
+            <Power className="h-5 w-5" />
+          </div>
+          <h1 className="text-lg font-semibold">
+            {closedNotice === 'server' ? 'Workspace Navigator Server Stopped' : 'Dashboard Closed'}
+          </h1>
+          <p className="mt-2 text-xs text-[var(--ink-muted)]">
+            {closedNotice === 'server'
+              ? 'The local server on port 8585 has stopped cleanly. You can close this browser tab.'
+              : 'The background watcher is still running. You can close this browser tab or reopen the dashboard.'}
+          </p>
+          {closedNotice === 'window' && (
+            <div className="mt-5 flex justify-center">
+              <Button variant="primary" onClick={() => setClosedNotice(null)}>
+                Reopen Dashboard
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen flex-col bg-[var(--canvas)] text-[var(--ink)] lg:flex-row">
       <Sidebar
@@ -275,6 +326,15 @@ export default function App() {
               }}
             >
               <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
+            </Button>
+
+            <Button
+              variant="outline"
+              title="Close Dashboard or Stop Server"
+              onClick={() => setCloseDialogOpen(true)}
+            >
+              <Power className="h-4 w-4" />
+              <span>Close</span>
             </Button>
           </div>
         </header>
@@ -445,6 +505,14 @@ export default function App() {
         item={pendingDelete}
         onCancel={() => setPendingDelete(null)}
         onConfirm={handleDeleteConfirm}
+      />
+
+      <CloseDialog
+        open={closeDialogOpen}
+        busy={closingBusy}
+        onCancel={() => setCloseDialogOpen(false)}
+        onCloseWindowOnly={handleCloseWindowOnly}
+        onStopServerAndClose={handleStopServerAndClose}
       />
 
       {/* Toast */}

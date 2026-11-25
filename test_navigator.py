@@ -247,6 +247,10 @@ class TestNavigatorUniversal(unittest.TestCase):
                 self.assertEqual(json.loads(raw)["removed_count"], 1)
                 st, raw = _req("/api/quarantine")
                 self.assertEqual(json.loads(raw)["count"], 0)
+
+                st, raw = _req("/api/shutdown", "POST", {})
+                self.assertEqual(st, 200)
+                self.assertTrue(json.loads(raw)["success"])
             finally:
                 httpd.shutdown()
                 httpd.server_close()

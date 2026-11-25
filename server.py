@@ -1015,6 +1015,11 @@ class NavigatorHandler(SimpleHTTPRequestHandler):
             self._send_json(200, {"success": True, "is_favorite": is_fav})
             return
 
+        if parsed.path == "/api/shutdown":
+            self._send_json(200, {"success": True, "message": "Workspace Navigator server shutting down"})
+            threading.Thread(target=self.server.shutdown, daemon=True).start()
+            return
+
         self.send_response(404)
         self.end_headers()
 
@@ -1054,6 +1059,7 @@ def run_server() -> None:
         httpd.serve_forever()
     except KeyboardInterrupt:
         print("\nStopping server.")
+    finally:
         httpd.server_close()
 
 
